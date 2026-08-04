@@ -1,0 +1,357 @@
+{
+  "meta": {
+    "file": "chewy_brand_rules_full_brand_v1_2025-11-13.json",
+    "version": "1.0.0",
+    "updated": "2025-11-13",
+    "owner": "Brand Studio",
+    "contact": "brand@chewy.com",
+    "scope": "brand_voice",
+    "overview": "Brand Voice, Tone, Inclusivity, Offers, and Checklist for Chewy. Provides tone sliders, voice principles, inclusivity guidance, offer constructions, and the C1\u2013C8 copy checklist. Intended for a Copy Checker GPT to evaluate resonance, tone fit, and brand alignment, with rewrite suggestions.",
+    "notes": "Expanded with rich examples; includes checklist with weights for self-evaluation."
+  },
+  "rules": {
+    "brand_goals_principles": [
+      {
+        "id": "goal.connect",
+        "description": "Create an emotional connection rooted in the pet\u2013parent relationship.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "They\u2019re not just pets\u2014they\u2019re family. Find the gear that keeps you together for longer walks, louder purrs, and more couch cuddles."
+          ],
+          "dont": [
+            "Buy now for maximum ROI on pet supplies."
+          ]
+        },
+        "suggestion": "Anchor benefits in shared moments between pets and their people."
+      },
+      {
+        "id": "goal.respect",
+        "description": "Respect time and intelligence; prioritize clarity and brevity.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Here\u2019s what you need for a new kitten\u2014no fluff, just the good stuff. Litter box, scratcher, gentle wipes, and a toy that squeaks softly."
+          ],
+          "dont": [
+            "Introducing our revolutionary best-in-class kitten starter set, meticulously engineered to optimize feline lifestyle outcomes."
+          ]
+        },
+        "suggestion": "Say the necessary thing in the simplest way; skip hype and jargon."
+      },
+      {
+        "id": "goal.inspire",
+        "description": "Celebrate how pets make us better; bring warmth without hyperbole.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Your dog doesn\u2019t care that it\u2019s raining. That\u2019s love. Grab a raincoat that lets you love it back."
+          ],
+          "dont": [
+            "This is the most incredible raincoat ever created in the history of petdom!!!"
+          ]
+        },
+        "suggestion": "Let authentic enthusiasm show; avoid overblown claims."
+      },
+      {
+        "id": "goal.guide",
+        "description": "Equip, explain, and offer clear next steps with empathy.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Out of your pup\u2019s usual chews? Try this similar size and texture\u2014ships today so fetch isn\u2019t on hold."
+          ],
+          "dont": [
+            "Sorry for the inconvenience."
+          ]
+        },
+        "suggestion": "Pair empathy with an immediate, specific solution."
+      },
+      {
+        "id": "voice.clear_over_clever",
+        "description": "Clarity beats clever; concrete beats abstract; skip puns.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "We\u2019ll handle your pet\u2019s Rx approval and deliver it to your door."
+          ],
+          "dont": [
+            "Bring the love with convenient pet meds."
+          ]
+        },
+        "suggestion": "Replace slogans with specific promises and visible outcomes."
+      },
+      {
+        "id": "voice.fun_not_goofy",
+        "description": "We\u2019re not a funny brand, but we have fun\u2014observational, pet-true humor only.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "\u2018The peanut butter box!\u2019 \u2014 your dog, every single delivery day."
+          ],
+          "dont": [
+            "Have a paw-some time with purrfect deals!"
+          ]
+        },
+        "suggestion": "Use humor that comes from real pet behavior, not wordplay."
+      }
+    ],
+    "tone": [
+      {
+        "id": "tone.match_context",
+        "description": "Match tone to channel and moment; voice stays consistent.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "OOS meds email: \u201cWe\u2019re on it. Here\u2019s the next best step to keep doses on schedule.\u201d"
+          ],
+          "dont": [
+            "OOS meds email: \u201cWe\u2019re obsessed with squeaky toys today!\u201d"
+          ]
+        },
+        "suggestion": "Dial up clarity/action in sensitive moments; save playful for low-stakes contexts."
+      }
+    ],
+    "inclusivity_and_pets": [
+      {
+        "id": "incl.people_neutral",
+        "description": "Use gender-neutral language and stated pronouns; avoid sexist job titles and ableist phrases.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Thanks to your delivery person for braving the rain."
+          ],
+          "dont": [
+            "Thanks to the deliveryman for braving the rain."
+          ]
+        },
+        "suggestion": "Use neutral role nouns (delivery person, firefighter)."
+      },
+      {
+        "id": "incl.pets_pronouns",
+        "description": "Refer to pets as who/whom/they; avoid \u2018it\u2019.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Treats just for them. Get them what they can\u2019t be without."
+          ],
+          "dont": [
+            "Treats just for it. Get it what it can\u2019t be without."
+          ]
+        },
+        "suggestion": "Default to they/them when the pet\u2019s name or sex isn\u2019t used."
+      },
+      {
+        "id": "incl.avoid_endearments",
+        "description": "Avoid personal endearments (e.g., \u2018fur baby\u2019, \u2018BFF\u2019); let pet parents define roles.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Your companion is one of a kind\u2014find gear that fits their quirks."
+          ],
+          "dont": [
+            "Spoil your fur baby, BFF, or four-legged child today!"
+          ]
+        },
+        "suggestion": "Use \u2018pet(s)\u2019, species names, or actual names for specificity."
+      }
+    ],
+    "brand_references": [
+      {
+        "id": "brand.name_usage",
+        "description": "Use \u201cChewy\u201d as a proper name; avoid literal \u2018chewy\u2019 wordplay or treating it as a pet name.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "With Chewy, refills are simple. We\u2019ll coordinate with your vet."
+          ],
+          "dont": [
+            "Our brand is chewy\u2014like the treats!"
+          ]
+        },
+        "suggestion": "Keep \u2018Chewy\u2019 as a brand reference; avoid puns on the name."
+      },
+      {
+        "id": "brand.by_chewy",
+        "description": "Use \u2018by Chewy\u2019 for private brands; capitalize Chewy in copy (logo remains lowercase visually).",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Chewy Eats",
+            "American Journey by Chewy"
+          ],
+          "dont": [
+            "CHEWY EATS (shouting)"
+          ]
+        },
+        "suggestion": "Capitalize Chewy as a proper noun; avoid ALL CAPS for emphasis."
+      }
+    ],
+    "offers": [
+      {
+        "id": "offer.percent",
+        "description": "Allowed: \u2018XX% off\u2019, \u2018Up to XX% off\u2019, \u2018Save XX%\u2019. Pair with \u2018when you buy/spend/order\u2019 when required. Avoid \u2018with your order of\u2019.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Save 25% when you spend $100 on select food.",
+            "Up to 40% off treats this weekend."
+          ],
+          "dont": [
+            "Save 25% with your order of $100 on select food.",
+            "Best savings ever\u2014up to 40%!!!"
+          ]
+        },
+        "suggestion": "Use standard offer phrasing; keep urgency respectful and specific."
+      },
+      {
+        "id": "offer.dollar",
+        "description": "Allowed: \u2018$XX off\u2019, \u2018Up to $XX off\u2019. Pair with \u2018when you buy/spend/order\u2019.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Get $25 off when you spend $100 on cat food."
+          ],
+          "dont": [
+            "Get $25 off with your order of $100 on cat food."
+          ]
+        },
+        "suggestion": "Switch to \u2018when you buy/spend/order\u2019; avoid \u2018with your order of\u2019."
+      },
+      {
+        "id": "offer.bogo",
+        "description": "Use \u2018Buy X, get Y\u2019. Don\u2019t use \u2018BOGO\u2019. For \u2018Buy 2, get 1 free\u2019, write \u2018Buy 2, get 3rd free\u2019.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Buy one, get one 50% off\u2014mix & match."
+          ],
+          "dont": [
+            "BOGO 50% off\u2014mix & match."
+          ]
+        },
+        "suggestion": "Spell out the construction; avoid the acronym."
+      },
+      {
+        "id": "offer.free_with",
+        "description": "\u2018Free X with Y\u2019: say \u2018when you buy\u2019, not \u2018with your order of\u2019. Don\u2019t say \u2018free\u2019 for KONG promos.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Get a free Frisco dog toy when you buy select Purina dog food."
+          ],
+          "dont": [
+            "Free Frisco dog toy with your order of select Purina dog food."
+          ]
+        },
+        "suggestion": "Use \u2018when you buy\u2019; follow brand-specific legal nuances (e.g., KONG)."
+      },
+      {
+        "id": "offer.egift",
+        "description": "Allowed: \u2018$XX eGift card\u2019 / \u2018Free $XX eGift card when you spend\u2026\u2019. Don\u2019t say \u2018free\u2019 with KONG promos.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Free $25 eGift card when you spend $100 on select items."
+          ],
+          "dont": [
+            "Get a free $25 eGift card with $100 order."
+          ]
+        },
+        "suggestion": "Pair with \u2018when you spend\u2019; watch brand-specific restrictions."
+      },
+      {
+        "id": "offer.autoship",
+        "description": "Autoship-only phrasing: \u2018XX% off \u2013 Autoship only\u2019. If the Autoship logo isn\u2019t present, include the word in copy.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "35% off your first Autoship order. Plus, 5% off repeat deliveries."
+          ],
+          "dont": [
+            "35% off your first order. (Autoship not clear)"
+          ]
+        },
+        "suggestion": "Include \u2018Autoship\u2019 in offer copy when the logo isn\u2019t shown."
+      },
+      {
+        "id": "offer.style_urgency",
+        "description": "Avoid fear-driven urgency (e.g., \u2018last chance\u2019 as default). \u2018Limited-time offer\u2019 is acceptable.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Limited-time offer\u2014ends Sunday."
+          ],
+          "dont": [
+            "Last chance! This won\u2019t last!"
+          ]
+        },
+        "suggestion": "Use respectful, factual urgency; add end dates when available."
+      }
+    ],
+    "tone_examples": [
+      {
+        "id": "tone.playful",
+        "description": "Light, warm, pet-true. Never goofy for its own sake.",
+        "passage": "He heard the squeak three rooms away. Mission accepted. Hide the slippers and bring on the tug toys."
+      },
+      {
+        "id": "tone.expert",
+        "description": "Credible and clear. Explain the \u2018why\u2019 without lecturing.",
+        "passage": "Bearded dragons bask to regulate heat. Set up a warm ledge and a UVB bulb so they can soak in what they need."
+      },
+      {
+        "id": "tone.empathetic",
+        "description": "Start with understanding; pair with concrete next steps.",
+        "passage": "Allergies flare at the worst times. Here\u2019s how to keep the itching down while you wait for the new prescription."
+      },
+      {
+        "id": "tone.urgent",
+        "description": "Action-forward for time-sensitive tasks; still respectful.",
+        "passage": "Heads up: your refill window closes tomorrow. Reorder now to keep doses on schedule."
+      }
+    ],
+    "checklist": [
+      {
+        "id": "C1.relationship",
+        "prompt": "Start from the pet\u2013parent relationship; what\u2019s in it for both?",
+        "weight": 1.0
+      },
+      {
+        "id": "C2.clear_helpful",
+        "prompt": "Is it clear, helpful, and prioritized? (Clarity over clever.)",
+        "weight": 1.0
+      },
+      {
+        "id": "C3.specific_show",
+        "prompt": "Show, don\u2019t tell. Use concrete, visual specifics.",
+        "weight": 0.8
+      },
+      {
+        "id": "C4.inspiring",
+        "prompt": "Does genuine enthusiasm come through without hype?",
+        "weight": 0.6
+      },
+      {
+        "id": "C5.human_voice",
+        "prompt": "Do we sound like a real, pet-obsessed friend?",
+        "weight": 0.6
+      },
+      {
+        "id": "C6.hierarchy",
+        "prompt": "Guide\u2014don\u2019t overwhelm. Use a clear message hierarchy.",
+        "weight": 0.8
+      },
+      {
+        "id": "C7.realism",
+        "prompt": "Acknowledge mess + joy; avoid melodrama; be supportive.",
+        "weight": 0.6
+      },
+      {
+        "id": "C8.tone_fit",
+        "prompt": "Does tone match the channel and situation?",
+        "weight": 0.8
+      }
+    ]
+  }
+}

@@ -1,0 +1,326 @@
+{
+  "meta": {
+    "file": "chewy_brand_rules_full_mechanics_v1_2025-11-13.json",
+    "version": "1.0.0",
+    "updated": "2025-11-13",
+    "owner": "Brand Studio",
+    "contact": "brand@chewy.com",
+    "scope": "mechanics",
+    "overview": "Mechanics & Formatting Rules for Chewy copy. Covers capitalization, punctuation, numbers, special characters, word choice, and structure. Intended for a Copy Checker GPT to detect and explain mechanical/style issues and suggest compliant rewrites.",
+    "notes": "Expanded with rich examples. Use alongside the brand file for full coverage."
+  },
+  "rules": {
+    "capitalization": [
+      {
+        "id": "cap.sentence_case.headlines",
+        "description": "Headlines, subcopy, subject lines, eyebrows, and CTAs use sentence case. Capitalize only the first word and proper nouns.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Headline: Litter that clumps how kitty likes",
+            "CTA: Shop dry food",
+            "Subject: Flea & tick answers, right when you need them"
+          ],
+          "dont": [
+            "Headline: Litter That Clumps How Kitty Likes",
+            "CTA: SHOP DRY FOOD",
+            "Subject: Flea & Tick Answers, Right When You Need Them."
+          ]
+        },
+        "suggestion": "Convert to sentence case; remove ending period in headlines; keep proper nouns capitalized."
+      },
+      {
+        "id": "cap.proper_nouns",
+        "description": "Capitalize names (people, pets), product names, and Chewy programs. Treat true shopping categories as proper nouns in nav/headers/CTAs; use discretion in body copy.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Explore Fresh & Prepared recipes your dog will daydream about.",
+            "See what\u2019s new in Flea & Tick.",
+            "Shop Dry Food."
+          ],
+          "dont": [
+            "Explore fresh & prepared recipes your dog will daydream about.",
+            "See what\u2019s new in flea & tick.",
+            "Shop dry food. (in a nav/CTA context)"
+          ]
+        },
+        "suggestion": "Capitalize category names in navigation, headers, CTAs; lowercase when used descriptively in running text."
+      },
+      {
+        "id": "cap.no_all_caps",
+        "description": "Do not use ALL CAPS for emphasis. All-caps brand-mandated stylings and abbreviations are exceptions (e.g., DNA, LLC, KONG).",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Get 25% off select toys",
+            "Meet KONG classics your pup can\u2019t put down"
+          ],
+          "dont": [
+            "GET 25% OFF SELECT TOYS",
+            "Meet Kong classics your pup can\u2019t put down"
+          ]
+        },
+        "suggestion": "Use font weight, layout, or phrasing for emphasis; keep exceptions properly capitalized."
+      }
+    ],
+    "punctuation": [
+      {
+        "id": "punc.no_periods_headlines",
+        "description": "Do not use periods at the end of headlines unless the headline contains multiple full sentences.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Long walks ahead",
+            "No more fleas. No more ticks."
+          ],
+          "dont": [
+            "Long walks ahead.",
+            "The right leash makes together time even better."
+          ]
+        },
+        "suggestion": "Remove trailing period in headlines unless you have multiple complete sentences."
+      },
+      {
+        "id": "punc.subcopy_periods",
+        "description": "Subcopy takes ending punctuation for complete thoughts.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Big on pets not on prices.",
+            "Save on everything they love and need."
+          ],
+          "dont": [
+            "Big on pets not on prices",
+            "Save on everything they love & need"
+          ]
+        },
+        "suggestion": "Add a period to finish the subcopy; use 'and' unless '&' is part of a set style."
+      },
+      {
+        "id": "punc.oxford_comma",
+        "description": "Use the Oxford comma in series of three or more items. If an ampersand replaces 'and', do not use the Oxford comma before '&'.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Cats love treats, catnip, and cozy naps.",
+            "Cats love treats, catnip & cozy naps."
+          ],
+          "dont": [
+            "Cats love treats, catnip and cozy naps.",
+            "Cats love treats, catnip, & cozy naps."
+          ]
+        },
+        "suggestion": "Add the final comma in lists of three or more unless using an ampersand as a stylistic connector."
+      },
+      {
+        "id": "punc.colon_semicolon_dash",
+        "description": "Colons introduce emphasis/lists; capitalize next word if it starts a full sentence. Semicolons link related clauses or complex lists. Em dashes create emphasis or asides; use sparingly in long-form.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Set them up right: Pick a harness they\u2019ll love.",
+            "This toy gets squeaks, tugs, and zoomies\u2014without ripping."
+          ],
+          "dont": [
+            "Set them up right - pick a harness they\u2019ll love.",
+            "This toy gets squeaks \u2014 without ripping. (spaces around em dash in running text)"
+          ]
+        },
+        "suggestion": "Use true em dashes (\u2014) without spaces in running text; prefer colon for simple emphasis."
+      },
+      {
+        "id": "punc.ellipses_quotes_parentheses",
+        "description": "Avoid ellipses in headlines; reserve for social/scripts to indicate a pause. Periods/commas go inside quotes. Parenthetical punctuation goes outside unless the parenthetical is a full sentence.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "\u201cHey, is that your Yorkie\u2019s name?\u201d she asked.",
+            "Gear for your daily walk (okay, your dog\u2019s daily walk)."
+          ],
+          "dont": [
+            "Long walks ahead...",
+            "Gear for your daily walk. (okay, your dog\u2019s daily walk)"
+          ]
+        },
+        "suggestion": "Replace ellipses with stronger phrasing; check quote and parenthesis punctuation placement."
+      }
+    ],
+    "numbers": [
+      {
+        "id": "num.spell_1_to_9",
+        "description": "Spell out one through nine; use numerals for 10 and above. Spell out numbers at the start of a sentence.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Six chews your heavy chewer can\u2019t put down.",
+            "Save on 12-lb bags for bigger appetites."
+          ],
+          "dont": [
+            "6 chews your heavy chewer can\u2019t put down.",
+            "Twelve-lb bags for bigger appetites."
+          ]
+        },
+        "suggestion": "Spell 1\u20139; switch to numerals 10+; never start a sentence with numerals."
+      },
+      {
+        "id": "num.dates_times",
+        "description": "Dates: Month D, YYYY (Dec 1). No superscripts (1st). Times: use a.m./p.m. with periods; may remove periods when space is tight.",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Sale starts Dec 1.",
+            "Your vet call is at 3 p.m."
+          ],
+          "dont": [
+            "Sale starts December 1st.",
+            "Your vet call is at 3 PM."
+          ]
+        },
+        "suggestion": "Drop superscripts; prefer \u2018a.m.\u2019/\u2018p.m.\u2019; allow compact forms when constrained."
+      },
+      {
+        "id": "num.measurements_percents",
+        "description": "Measurements: use numerals (1 oz, 12 cups). Percentages: numerals with no space before % (25%). Keep decimals to two places max; use leading 0 for <1.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Serve 1 oz daily for adult cats.",
+            "Save 25% when you spend $100 on select food."
+          ],
+          "dont": [
+            "Serve one oz daily for adult cats.",
+            "Save 25 % when you spend $100 on select food."
+          ]
+        },
+        "suggestion": "Use numerals for measurements; write \u201825%\u2019, not \u201825 %\u2019; keep decimals tidy."
+      }
+    ],
+    "special_characters": [
+      {
+        "id": "char.ampersand_usage",
+        "description": "Use \u2018&\u2019 only in banners or associated assets. Avoid in long-form, PDPs, DIM long descriptions, or legal.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Treats, toys & more (banner)"
+          ],
+          "dont": [
+            "Treats, toys & more. (body copy)"
+          ]
+        },
+        "suggestion": "Replace \u2018&\u2019 with \u2018and\u2019 in body/legal copy."
+      },
+      {
+        "id": "char.plus_sign",
+        "description": "Use the plus sign with numbers (e.g., $49+). Don\u2019t replace the words \u2018and\u2019 or \u2018plus\u2019. Prefer \u2018over\u2019 unless space is limited.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Free shipping on orders $49+."
+          ],
+          "dont": [
+            "Join Autoship + get free shipping."
+          ]
+        },
+        "suggestion": "Use \u2018and\u2019 instead of \u2018+\u2019 between words unless indicating numeric thresholds."
+      },
+      {
+        "id": "char.text_styles",
+        "description": "No underline or strikethrough. Italics only in special cases (e.g., film titles on PDP).",
+        "severity": "guide",
+        "examples": {
+          "do": [
+            "Award-winning *The Dogfather* (film) featured this breed."
+          ],
+          "dont": [
+            "Award-winning The Dogfather featured this breed. (needs italics)",
+            " ~Save now~  (strikethrough)"
+          ]
+        },
+        "suggestion": "Avoid underline/strikethrough; use italics sparingly when referencing titles."
+      }
+    ],
+    "word_choice": [
+      {
+        "id": "word.preferred_autoship",
+        "description": "Capitalize Autoship; do not verb it. Use \u2018repeat orders\u2019/\u2018automatic refills\u2019 instead of \u2018subscription\u2019.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Save on your first Autoship order.",
+            "Set up repeat orders to never run out."
+          ],
+          "dont": [
+            "Save on your first autoship order.",
+            "Subscribe to food deliveries."
+          ]
+        },
+        "suggestion": "Capitalize Autoship; replace \u2018subscription\u2019 with \u2018repeat orders\u2019 or \u2018automatic refills\u2019."
+      },
+      {
+        "id": "word.avoid_lists",
+        "description": "Avoid clich\u00e9s, pet puns, vague hype, finance/business jargon, and sensitive/ableist terms.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Make bath day easier with a no-slip mat and gentle suds.",
+            "Get more of what they love, without overspending."
+          ],
+          "dont": [
+            "Paw-some deals that are the best in the universe!",
+            "Crushing it with ROI on your pet spend."
+          ]
+        },
+        "suggestion": "Use concrete, respectful language; celebrate value without hype or jargon."
+      },
+      {
+        "id": "word.cart_not_basket",
+        "description": "Use \u2018cart\u2019, not \u2018basket\u2019 or \u2018bag\u2019, when referring to checkout.",
+        "severity": "warn",
+        "examples": {
+          "do": [
+            "Add to cart"
+          ],
+          "dont": [
+            "Add to basket",
+            "Add to bag"
+          ]
+        },
+        "suggestion": "Standardize checkout language to \u2018cart\u2019."
+      }
+    ],
+    "structure": [
+      {
+        "id": "struct.headline_subcopy_combo",
+        "description": "Use headline + subcopy or headline-only. Subcopy-only is not an option. Headlines grab attention; subcopy adds brief context.",
+        "severity": "fail",
+        "examples": {
+          "do": [
+            "Headline: Favorite litter\nSubcopy: Clumps how kitty likes.",
+            "Headline: Litter that clumps how kitty likes"
+          ],
+          "dont": [
+            "Subcopy: Clumps how kitty likes."
+          ]
+        },
+        "suggestion": "Add a concise headline or fold the subcopy into a single, clear headline."
+      },
+      {
+        "id": "struct.fragments_ok",
+        "description": "Sentence fragments are okay when clear, especially in headlines and subcopy.",
+        "severity": "pass",
+        "examples": {
+          "do": [
+            "Fresh toys for marathon chewers.",
+            "For the cat who never met a sunbeam they didn't like."
+          ],
+          "dont": [
+            "Run-on fragments that confuse meaning and bury the CTA"
+          ]
+        },
+        "suggestion": "Keep fragments crisp and meaningful; avoid stacking fragments that obscure the message."
+      }
+    ]
+  }
+}
