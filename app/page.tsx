@@ -6,7 +6,9 @@ import {
   extractHints,
   Intake,
   makePlan,
+  NEEDS_INPUT,
   PlanSection,
+  serializePlan,
   writingChecks,
 } from "../lib/changeNavigator";
 
@@ -85,6 +87,54 @@ export default function Home() {
     window.setTimeout(() => document.getElementById("plan")?.scrollIntoView({ behavior: "smooth" }), 0);
   };
 
+  const updatePlanField = (
+    sectionIndex: number,
+    category: "sourceSupported" | "suggestedActions" | "needsInput",
+    fieldIndex: number,
+    value: string,
+  ) => {
+    setPlan((current) => current.map((section, currentSectionIndex) => {
+      if (currentSectionIndex !== sectionIndex) return section;
+      return {
+        ...section,
+        [category]: section[category].map((item, currentFieldIndex) =>
+          currentFieldIndex === fieldIndex ? { ...item, value } : item),
+      };
+    }));
+  };
+
+  const updateTableCell = (sectionIndex: number, rowIndex: number, key: string, value: string) => {
+    setPlan((current) => current.map((section, currentSectionIndex) => {
+      if (currentSectionIndex !== sectionIndex || !section.table) return section;
+      return {
+        ...section,
+        table: {
+          ...section.table,
+          rows: section.table.rows.map((row, currentRowIndex) =>
+            currentRowIndex === rowIndex ? { ...row, [key]: value } : row),
+        },
+      };
+    }));
+  };
+
+  const addTableRow = (sectionIndex: number) => {
+    setPlan((current) => current.map((section, currentSectionIndex) => {
+      if (currentSectionIndex !== sectionIndex || !section.table) return section;
+      const emptyRow = Object.fromEntries(section.table.columns.map((column) => [column.key, NEEDS_INPUT]));
+      return { ...section, table: { ...section.table, rows: [...section.table.rows, emptyRow] } };
+    }));
+  };
+
+  const removeTableRow = (sectionIndex: number, rowIndex: number) => {
+    setPlan((current) => current.map((section, currentSectionIndex) => {
+      if (currentSectionIndex !== sectionIndex || !section.table) return section;
+      return {
+        ...section,
+        table: { ...section.table, rows: section.table.rows.filter((_, currentRowIndex) => currentRowIndex !== rowIndex) },
+      };
+    }));
+  };
+
   const clear = () => {
     setIntake(emptyIntake);
     setFileName("");
@@ -95,14 +145,17 @@ export default function Home() {
   };
 
   const download = () => {
-    const body = plan.map((section) => `${section.title}\n${section.content}\nSource: ${section.source}`).join("\n\n");
+    const body = serializePlan(intake.projectName, plan);
     const blob = new Blob([body], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `${intake.projectName || "change-activation-plan"}.txt`;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   return (
@@ -175,19 +228,64 @@ export default function Home() {
       {plan.length > 0 && (
         <section className="plan" id="plan">
           <div className="plan-header">
-            <div><span className="kicker">Step 3</span><h2>Your activation plan</h2><p>Edit freely. Source labels show which approved reference informed each section.</p></div>
+            <div><span className="kicker">Step 3</span><h2>Your activation plan</h2><p>Edit every field and matrix before download. Missing facts are labeled Needs user input.</p></div>
             <div className="actions"><button className="secondary" onClick={download}>Download draft</button><button className="primary compact" onClick={generate}>Refresh draft</button></div>
           </div>
           <div className="plan-layout">
             <div className="plan-sections">
-              {plan.map((section, index) => (
-                <article className="plan-card" key={section.id}>
+              {plan.map((section, sectionIndex) => (
+                <article className="plan-card" key={section.id} data-section-id={section.id}>
                   <div><h3>{section.title}</h3><span className="source">Grounded in: {section.source}</span></div>
-                  <textarea
-                    aria-label={section.title}
-                    value={section.content}
-                    onChange={(event) => setPlan((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, content: event.target.value } : item))}
-                  />
+                  {([
+                    ["sourceSupported", "Source-supported information"],
+                    ["suggestedActions", "Suggested plan actions"],
+                    ["needsInput", "Information to provide or confirm"],
+                  ] as const).map(([category, categoryLabel]) => (
+                    <section className={`evidence-band evidence-${category}`} key={category}>
+                      <h4>{categoryLabel}</h4>
+                      <div className="field-stack">
+                        {section[category].map((item, fieldIndex) => (
+                          <label key={item.id}>{item.label}
+                            <textarea
+                              aria-label={`${section.title} - ${categoryLabel} - ${item.label}`}
+                              value={item.value}
+                              onChange={(event) => updatePlanField(sectionIndex, category, fieldIndex, event.target.value)}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                  {section.table && (
+                    <section className="matrix-block">
+                      <div className="matrix-heading">
+                        <div><span className="matrix-kicker">Editable matrix</span><h4>{section.table.label}</h4></div>
+                        <button className="add-row" onClick={() => addTableRow(sectionIndex)} aria-label={`Add row to ${section.table.label}`}>+ Add row</button>
+                      </div>
+                      <div className="table-scroll">
+                        <table>
+                          <thead><tr>{section.table.columns.map((column) => <th key={column.key} className={`column-${column.width ?? "medium"}`}>{column.label}</th>)}<th className="row-action">Row</th></tr></thead>
+                          <tbody>
+                            {section.table.rows.map((row, rowIndex) => (
+                              <tr key={`${section.id}-${rowIndex}`}>
+                                {section.table!.columns.map((column) => (
+                                  <td key={column.key}>
+                                    <textarea
+                                      aria-label={`${section.table!.label} row ${rowIndex + 1} ${column.label}`}
+                                      value={row[column.key] ?? ""}
+                                      onChange={(event) => updateTableCell(sectionIndex, rowIndex, column.key, event.target.value)}
+                                    />
+                                  </td>
+                                ))}
+                                <td className="row-action"><button className="remove-row" onClick={() => removeTableRow(sectionIndex, rowIndex)} aria-label={`Remove row ${rowIndex + 1} from ${section.table!.label}`}>Remove</button></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {section.table.rows.length === 0 && <p className="empty-matrix">No rows. Add a row to continue planning.</p>}
+                    </section>
+                  )}
                 </article>
               ))}
             </div>

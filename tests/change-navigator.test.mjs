@@ -12,6 +12,9 @@ test("prototype implements the required nine editable plan sections", async () =
   assert.match(page, /\.docx only/);
   assert.match(page, /processed in this browser/);
   assert.match(page, /setPlan\(makePlan/);
+  assert.match(page, /serializePlan\(intake\.projectName, plan\)/);
+  assert.match(page, /addTableRow/);
+  assert.match(page, /removeTableRow/);
   assert.equal((logic.match(/title: "\d\./g) ?? []).length, 9);
 });
 
@@ -22,7 +25,7 @@ test("governance and writing guardrails are visible in the implementation", asyn
     readFile(new URL("../README.md", import.meta.url), "utf8"),
   ]);
   assert.match(page, /Reach never comes before readiness/);
-  assert.match(logic, /Suggested—confirm with Communications/);
+  assert.match(logic, /Recommended - confirm with Communications/);
   assert.match(logic, /human-support boundary/);
   assert.match(logic, /What’s new:/);
   assert.match(readme, /nothing is uploaded or retained/i);

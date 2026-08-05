@@ -77,16 +77,40 @@ input:disabled, textarea:disabled { background: #f7f7f8; }
 .primary.compact { width: auto; }
 .secondary { border: 1px solid #cdd5e3; background: white; color: var(--ink); }
 
-.plan { max-width: 1180px; margin: 0 auto 70px; padding: 30px; }
+.plan { max-width: 1480px; margin: 0 auto 70px; padding: 30px; }
 .plan-header { padding-bottom: 25px; border-bottom: 1px solid var(--line); }
 .plan-header p { margin: 8px 0 0; color: var(--muted); }
 .actions { display: flex; gap: 9px; }
-.plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 24px; padding-top: 24px; align-items: start; }
+.plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) 275px; gap: 24px; padding-top: 24px; align-items: start; }
 .plan-sections { display: grid; gap: 12px; }
-.plan-card { padding: 19px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
+.plan-card { padding: 22px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
 .source { flex: 0 0 auto; max-width: 240px; color: var(--blue); font-size: 10px; font-weight: 750; text-align: right; }
-.plan-card textarea { min-height: 150px; margin-top: 14px; border-color: transparent; background: #f8f9fc; font-size: 14px; line-height: 1.6; }
-.plan-card textarea:hover { border-color: var(--line); }
+.evidence-band { margin-top: 18px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); }
+.evidence-band h4, .matrix-heading h4 { margin: 0; font-size: 14px; letter-spacing: -.01em; }
+.evidence-sourceSupported { border-left: 4px solid var(--blue); background: #f7f9ff; }
+.evidence-suggestedActions { border-left: 4px solid var(--aqua); background: #f5fbfb; }
+.evidence-needsInput { border-left: 4px solid #d98900; background: #fffaf0; }
+.field-stack { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.field-stack label:only-child { grid-column: 1 / -1; }
+.field-stack textarea { min-height: 86px; background: rgba(255,255,255,.86); font-size: 13px; line-height: 1.5; }
+.matrix-block { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+.matrix-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+.matrix-kicker { display: block; margin-bottom: 5px; color: var(--blue); font-size: 10px; font-weight: 850; text-transform: uppercase; letter-spacing: .1em; }
+.add-row { height: 36px; padding: 0 13px; border: 1px solid #b9c8ed; border-radius: 9px; background: var(--blue-soft); color: var(--blue); font-size: 12px; font-weight: 850; }
+.table-scroll { overflow-x: auto; padding-bottom: 5px; border: 1px solid var(--line); border-radius: 11px; }
+table { width: max-content; min-width: 100%; border-collapse: collapse; background: white; }
+th { padding: 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #f2f4f8; color: #45506a; font-size: 10px; line-height: 1.3; text-align: left; text-transform: uppercase; letter-spacing: .045em; }
+td { padding: 6px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+th:last-child, td:last-child { border-right: 0; }
+.column-small { width: 118px; min-width: 118px; }
+.column-medium { width: 170px; min-width: 170px; }
+.column-large { width: 235px; min-width: 235px; }
+td textarea { min-height: 82px; margin: 0; padding: 8px; border: 1px solid transparent; border-radius: 7px; background: #fbfcfe; font-size: 12px; line-height: 1.4; }
+td textarea:hover { border-color: #cfd6e3; }
+.row-action { width: 82px; min-width: 82px; text-align: center; }
+.remove-row { margin-top: 7px; padding: 7px 8px; border: 0; background: transparent; color: #a14343; font-size: 11px; font-weight: 800; }
+.empty-matrix { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
 .quality-panel { position: sticky; top: 18px; padding: 21px; border-radius: 15px; background: var(--ink); color: white; }
 .quality-panel h3 { margin: 8px 0 18px; font-size: 19px; }
 .quality-panel .kicker { color: #80e1e4; }
@@ -121,4 +145,6 @@ footer { padding: 0 24px 42px; color: var(--muted); text-align: center; font-siz
   .actions { width: 100%; }
   .actions button { flex: 1; }
   .brand span:last-child { font-size: 14px; }
+  .field-stack { grid-template-columns: 1fr; }
+  .field-stack label:only-child { grid-column: auto; }
 }

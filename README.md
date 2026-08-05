@@ -7,9 +7,11 @@ A small internal prototype that turns one `.docx` project brief into an editable
 - Reads paragraph text from one Word document.
 - Prefills a six-part change intake and asks the user to confirm gaps.
 - Classifies primary and secondary change type, recommends an XS–XL path, and surfaces risk/readiness signals.
-- Creates nine editable activation-plan sections with visible source grounding.
+- Creates nine detailed, editable activation-plan sections with visible source grounding.
+- Separates source-supported information, suggested plan actions, and information still needing confirmation.
+- Provides editable audience, stakeholder, communication, training, risk, objective, and timeline matrices with add/remove row controls.
 - Checks key Chewy writing conventions and flags items that still need human review.
-- Downloads the edited plan as a plain-text working draft.
+- Downloads the complete edited plan, including every matrix entry, as a plain-text working draft.
 
 ## Run locally
 
