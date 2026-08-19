@@ -6,6 +6,18 @@ export type Intake = {
   timing: string;
   readiness: string;
   sensitivities: string;
+  externalEvidence?: string;
+  externalSources?: string;
+};
+
+export type ConnectorSource = "SharePoint" | "Outlook email" | "Slack";
+export type EvidenceRoute = "connected-sources" | "chief-of-staff";
+
+export type EvidenceRequest = {
+  projectName: string;
+  searchGuidance: string;
+  sources: ConnectorSource[];
+  route: EvidenceRoute;
 };
 
 export type Assessment = {
@@ -46,6 +58,63 @@ export type PlanSection = {
 
 export const NEEDS_INPUT = "Needs user input";
 export const RECOMMENDED = "Recommended - confirm";
+
+const evidenceHeaders: Array<[string, keyof Intake]> = [
+  ["PROJECT NAME", "projectName"],
+  ["TIMING", "timing"],
+  ["WHAT'S CHANGING", "changeSummary"],
+  ["WHY IT MATTERS", "outcome"],
+  ["WHO IS AFFECTED", "audiences"],
+  ["READINESS EVIDENCE", "readiness"],
+  ["SENSITIVITIES AND APPROVALS", "sensitivities"],
+  ["SOURCES", "externalSources"],
+];
+
+export function buildConnectorRequest(request: EvidenceRequest) {
+  const selectedSources = request.route === "chief-of-staff"
+    ? ["Outlook email", "Slack"]
+    : request.sources.length ? request.sources : ["SharePoint", "Outlook email", "Slack"];
+  const routeNote = request.route === "chief-of-staff"
+    ? "Run this in the Chief of Staff Agent in ChatGPT web. Use its connected Outlook email and Slack sources only; it does not currently include SharePoint."
+    : `Use these connected sources: ${selectedSources.join(", ")}.`;
+
+  return `${routeNote}
+
+Create a read-only project evidence pack for: ${request.projectName.trim() || NEEDS_INPUT}.
+Search guidance: ${request.searchGuidance.trim() || "Use the project name and only the minimum recent context needed to answer the questions."}
+
+Do not send, edit, post, react, or change any source content. Use only facts supported by retrieved material. Cite the supporting document, email, message, or thread for every material answer. If the sources do not answer a field, write exactly "${NEEDS_INPUT}".
+
+Return only this structure:
+PROJECT NAME:
+TIMING:
+WHAT'S CHANGING:
+WHY IT MATTERS:
+WHO IS AFFECTED:
+READINESS EVIDENCE:
+SENSITIVITIES AND APPROVALS:
+SOURCES:
+
+Under SOURCES, list each supporting item as: source type | title or subject | date | link or identifiable location.`;
+}
+
+export function parseEvidencePack(text: string): Partial<Intake> {
+  const result: Partial<Intake> = { externalEvidence: text.trim() };
+  const headerPattern = evidenceHeaders.map(([header]) => header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const matches = [...text.matchAll(new RegExp(`^(${headerPattern}):\\s*`, "gim"))];
+
+  matches.forEach((match, index) => {
+    const header = match[1].toUpperCase();
+    const fieldName = evidenceHeaders.find(([candidate]) => candidate === header)?.[1];
+    if (!fieldName) return;
+    const start = (match.index ?? 0) + match[0].length;
+    const end = matches[index + 1]?.index ?? text.length;
+    const value = text.slice(start, end).trim();
+    if (value && value !== NEEDS_INPUT) result[fieldName] = value;
+  });
+
+  return result;
+}
 
 const includesAny = (text: string, terms: string[]) =>
   terms.some((term) => text.includes(term));
@@ -121,6 +190,11 @@ export function makePlan(intake: Intake, assessment: Assessment): PlanSection[] 
   const outcome = provided(intake.outcome);
   const readiness = provided(intake.readiness);
   const sensitivities = provided(intake.sensitivities);
+  const importedEvidence = intake.externalEvidence?.trim() ?? "";
+  const importedSources = intake.externalSources?.trim() ?? "";
+  const overviewSource = importedEvidence
+    ? "Uploaded document + user-reviewed connected-source evidence + Change Navigation strategic framework"
+    : "Uploaded document + Change Navigation strategic framework";
   const riskLine = assessment.risks.length
     ? assessment.risks.join("; ")
     : "No high-risk signals were detected in the information provided. Confirm through human review.";
@@ -135,11 +209,15 @@ export function makePlan(intake: Intake, assessment: Assessment): PlanSection[] 
     {
       id: "overview",
       title: "1. Change overview and case for change",
-      source: "Uploaded document + Change Navigation strategic framework",
+      source: overviewSource,
       sourceSupported: [
         field("what-changing", "What is changing", change),
         field("why-changing", "Why it is changing", outcome),
         field("business-outcome", "Intended business outcome", outcome),
+        ...(importedEvidence ? [
+          field("connected-evidence", "Imported connected-source evidence", importedEvidence),
+          field("connected-sources", "Imported source references", provided(importedSources)),
+        ] : []),
       ],
       suggestedActions: [
         field("case-draft", "Working case for change", `What’s new: ${change}\n\nWhy it matters: ${outcome}`),
