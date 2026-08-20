@@ -27,8 +27,10 @@ export type PlaybookColumn = {
   control?: ControlType;
   options?: string[];
   helper?: string;
+  advanced?: boolean;
+  reuse?: "audiences" | "stakeholders" | "owners" | "dates";
 };
-export type PlaybookTable = { id: string; label: string; columns: PlaybookColumn[]; rows: Array<Record<string, string>> };
+export type PlaybookTable = { id: string; label: string; description?: string; columns: PlaybookColumn[]; rows: Array<Record<string, string>> };
 export type PhaseInstructions = {
   purpose: string;
   whatToDo: string;
@@ -47,6 +49,9 @@ export type PlaybookPhase = {
   tables?: PlaybookTable[];
   checklist?: string[];
   instructions: PhaseInstructions;
+  icon?: string;
+  color?: "spark" | "prepare" | "activate" | "sustain";
+  focusAreas?: Array<{ id: string; title: string; description: string; usage?: string; actionIds?: string[]; tableIds?: string[] }>;
 };
 
 const suggested = "Suggested — confirm with Communications";
@@ -89,7 +94,7 @@ function action(id: string, fields: Partial<PlaybookAction> & Pick<PlaybookActio
   };
 }
 
-export function makePlaybook(intake: Intake, assessment: Assessment): PlaybookPhase[] {
+function makeDetailedPlaybook(intake: Intake, assessment: Assessment): PlaybookPhase[] {
   const audiences = list(intake.audiences).length ? list(intake.audiences) : [NEEDS_INPUT];
   const change = value(intake.changeSummary);
   const outcome = value(intake.outcome);
@@ -189,6 +194,177 @@ export function makePlaybook(intake: Intake, assessment: Assessment): PlaybookPh
   ];
 }
 
+export function makePlaybook(intake: Intake, assessment: Assessment): PlaybookPhase[] {
+  const detailed = makeDetailedPlaybook(intake, assessment);
+  const byId = (id: string) => detailed.find((phase) => phase.id === id)!;
+  const understand = byId("understand");
+  const involved = byId("people-involved");
+  const leaders = byId("leaders");
+  const communications = byId("communications");
+  const materials = byId("materials");
+  const readiness = byId("readiness");
+  const launch = byId("launch");
+  const reinforce = byId("reinforce");
+
+  const limitTable = (table: PlaybookTable, visibleKeys: string[], reuse: Record<string, PlaybookColumn["reuse"]> = {}): PlaybookTable => ({
+    ...table,
+    columns: table.columns.map((column) => ({ ...column, advanced: !visibleKeys.includes(column.key), reuse: reuse[column.key] })),
+    rows: table.rows.slice(0, 3),
+  });
+  const audienceTable = limitTable(involved.tables![0], ["audience", "impact", "effect", "do", "importantDates"], { audience: "audiences" });
+  audienceTable.label = "Audience Impact";
+  audienceTable.description = "Use this section to decide who will be affected, how much the change affects them, and what you need them to do differently.";
+  audienceTable.columns = [
+    ...audienceTable.columns.map((column) => column.key === "impact"
+      ? { ...column, label: "Impact rating", options: ["Low", "Medium", "High"], helper: "Choose how much this change affects the audience." }
+      : column.key === "effect"
+        ? { ...column, label: "Why this rating?", helper: "Explain what makes the impact low, medium, or high." }
+        : column.key === "do"
+          ? { ...column, label: "Expected behavior", helper: "What should this audience do differently after the change?" }
+          : column),
+    { key: "importantDates", label: "Important dates", required: true, control: "text", helper: "Add the key dates this audience needs to know.", advanced: false, reuse: "dates" },
+  ];
+  audienceTable.rows = audienceTable.rows.map((row) => ({ ...row, importantDates: value(intake.timing) }));
+  const stakeholderTable = limitTable(involved.tables![1], ["stakeholder", "role", "need"], { stakeholder: "stakeholders", owner: "owners" });
+  stakeholderTable.label = "Key supporters";
+  stakeholderTable.columns = stakeholderTable.columns.map((column) => column.key === "role" ? { ...column, label: "Why they matter" } : column);
+  const communicationTable = limitTable(communications.tables![0], ["audience", "purpose", "channel", "sender", "timing", "message", "owner"], { audience: "audiences", sender: "stakeholders", owner: "owners", timing: "dates" });
+  const deliverableTable = limitTable(materials.tables![0], ["deliverable", "why", "audience", "owner", "due"], { audience: "audiences", owner: "owners", due: "dates" });
+  const launchTable = limitTable(launch.tables![0], ["action", "owner", "date", "status", "dependency", "evidence"], { owner: "owners", date: "dates" });
+  launchTable.label = "Launch Timeline";
+  launchTable.description = "Use this timeline to put launch activities in the order they need to happen. Add what needs to happen, who owns it, and when it should happen.";
+  launchTable.columns = launchTable.columns.map((column) => column.key === "action" ? { ...column, label: "What needs to happen?" } : column.key === "owner" ? { ...column, label: "Who owns it?" } : column.key === "date" ? { ...column, label: "When?" } : column.key === "status" ? { ...column, label: "Is it complete?" } : column.key === "evidence" ? { ...column, label: "Done when" } : column);
+  const measuresTable = limitTable(reinforce.tables![0], ["measure", "baseline", "target", "dataSource", "owner", "reviewDate"], { owner: "owners", reviewDate: "dates" });
+  const sustainActions = [
+    action("listen-feedback", { do: "Collect and review feedback from affected people and managers", who: value(intake.audiences), use: "Manager check-ins, questions, or a short pulse", create: "Feedback themes and follow-up owners", when: "After launch", why: "Feedback shows where people need more clarity or support.", doneWhen: "The main themes have an owner and next step." }),
+    action("reinforce-change", { do: "Reinforce the change where adoption or confidence is low", who: value(intake.audiences), use: `${suggested}: targeted reminder, FAQ update, coaching, or office hours`, create: "One targeted reinforcement action", when: "When feedback or measures show a gap", why: "Focused reinforcement fixes real gaps without adding noise.", doneWhen: "The gap improves or a new action is assigned." }),
+  ];
+
+  return [
+    {
+      id: "spark", number: 1, icon: "✨", color: "spark", title: "Spark", source: understand.source,
+      purpose: "Help people understand why the change matters and who needs to be involved.",
+      instructions: instruction("Create a clear starting point.", "Review the smart first draft, then confirm why the change matters, who is affected, and who must support it.", "Use the three Spark focus areas below.", "Change reason, audiences, impact, and key supporters.", "The main change story, priority audiences, and key supporters are confirmed or clearly marked for follow-up.", "A revised routing workflow will reduce handoffs for Customer Care; Operations leaders will sponsor it."),
+      actions: understand.actions.slice(0, 1), tables: [audienceTable, stakeholderTable], checklist: understand.checklist,
+      focusAreas: [
+        { id: "why", title: "Why this change", description: "Confirm what is changing, why it matters, and the expected outcome.", usage: "This becomes the shared change story used in leader and employee messages.", actionIds: understand.actions.slice(0, 1).map((item) => item.id) },
+        { id: "audiences", title: "Who is affected", description: "Review each audience, its impact, expected behavior, and important dates.", usage: "This guides communications, support, launch timing, and measurement.", tableIds: [audienceTable.id] },
+        { id: "supporters", title: "Who needs to support it", description: "Confirm the key stakeholders or sponsors and what you need from them.", usage: "These people will help make decisions, remove barriers, and support the change.", tableIds: [stakeholderTable.id] },
+      ],
+    },
+    {
+      id: "prepare", number: 2, icon: "🛠", color: "prepare", title: "Prepare", source: leaders.source,
+      purpose: "Make sure leaders, communications, and materials are ready.",
+      instructions: instruction("Prepare the people and tools that will carry the change.", "Confirm the most important leader actions, communications, and materials.", "Use the three Prepare focus areas below.", "Leader action, communication sequence, and required materials.", "Every visible recommendation is confirmed, edited, assigned, or marked for follow-up.", "Brief people managers, send one team message, and prepare talking points before launch."),
+      actions: leaders.actions.slice(0, 3), tables: [communicationTable, deliverableTable],
+      focusAreas: [
+        { id: "leaders", title: "Prepare leaders and managers", description: "Review what leaders need to know, do, and share.", usage: "This helps leaders explain the change clearly and support their teams.", actionIds: leaders.actions.slice(0, 3).map((item) => item.id) },
+        { id: "communications", title: "Plan communications and channels", description: "Review the most important audiences, messages, senders, channels, and dates.", usage: "This becomes the communication sequence used before and during launch.", tableIds: [communicationTable.id] },
+        { id: "materials", title: "Prepare materials and support", description: "Confirm which materials are needed, who owns them, and when they are due.", usage: "These materials give leaders and employees the information and support they need.", tableIds: [deliverableTable.id] },
+      ],
+    },
+    {
+      id: "activate", number: 3, icon: "🚀", color: "activate", title: "Activate", source: launch.source,
+      purpose: "Show exactly what needs to happen to launch the change.",
+      instructions: instruction("Turn preparation into an ordered launch.", "Confirm the immediate next actions, the launch sequence, and how questions or issues will be handled.", "Use the three Activate focus areas below.", "Owners, timing, dependencies, completion evidence, and issue response.", "The first actions are ordered, assigned, and ready to start.", "Confirm readiness, launch the approved message, and route early questions to the change owner."),
+      actions: readiness.actions.slice(0, 3), tables: [launchTable],
+      focusAreas: [
+        { id: "next", title: "Next actions", description: "Review the most important work that must be finished before launch.", usage: "This keeps the team focused on the work that unlocks launch readiness.", actionIds: readiness.actions.slice(0, 1).map((item) => item.id) },
+        { id: "launch", title: "Launch Timeline", description: "Put launch activities in order and confirm their owners and dates.", usage: "This becomes the shared timeline the team follows during launch.", tableIds: [launchTable.id] },
+        { id: "support", title: "Support and issue response", description: "Review how questions, resistance, and early issues will be handled.", usage: "This gives employees and managers a clear place to get help.", actionIds: readiness.actions.slice(1, 3).map((item) => item.id) },
+      ],
+    },
+    {
+      id: "sustain", number: 4, icon: "🔁", color: "sustain", title: "Sustain", source: reinforce.source,
+      purpose: "Help the change continue after launch.",
+      instructions: instruction("Use feedback and practical measures to sustain the change.", "Confirm how feedback will be collected, what will be measured, and how gaps will be reinforced.", "Use the three Sustain focus areas below.", "Feedback method, adoption measure, owner, review date, and reinforcement action.", "The measure and feedback route have owners and dates, and a reinforcement action is ready if needed.", "Review weekly routing accuracy and manager feedback; coach teams when the target is missed."),
+      actions: sustainActions.slice(0, 3), tables: [measuresTable],
+      focusAreas: [
+        { id: "listen", title: "Listen for feedback", description: "Review how questions, concerns, and manager feedback will be collected.", usage: "Feedback shows where people need more clarity, support, or follow-up.", actionIds: ["listen-feedback"] },
+        { id: "measure", title: "Measure adoption", description: "Confirm a practical measure, target, data source, owner, and review date.", usage: "This shows whether people are adopting the change and where results are falling short.", tableIds: [measuresTable.id] },
+        { id: "reinforce", title: "Reinforce the change", description: "Review the follow-up action to use when adoption or confidence is low.", usage: "This turns feedback and results into focused support instead of extra noise.", actionIds: ["reinforce-change"] },
+      ],
+    },
+  ];
+}
+
+export function reusablePlanValues(phases: PlaybookPhase[]) {
+  const tables = phases.flatMap((phase) => phase.tables ?? []);
+  const rows = (id: string) => tables.find((table) => table.id === id)?.rows ?? [];
+  const unique = (values: string[]) => [...new Set(values.flatMap((item) => item.split(",")).map((item) => item.trim()).filter((item) => item && item !== NEEDS_INPUT && item !== "Not required"))];
+  return {
+    audiences: unique(rows("audiences").map((row) => row.audience ?? "")),
+    stakeholders: unique(rows("stakeholders").map((row) => row.stakeholder ?? "")),
+    owners: unique(phases.flatMap((phase) => [...phase.actions.map((item) => item.owner), ...(phase.tables ?? []).flatMap((table) => table.rows.map((row) => row.owner ?? ""))])),
+    dates: unique(phases.flatMap((phase) => [...phase.actions.map((item) => item.when), ...(phase.tables ?? []).flatMap((table) => table.rows.map((row) => row.date ?? row.due ?? row.reviewDate ?? row.timing ?? ""))])),
+  };
+}
+
+export type FocusArea = NonNullable<PlaybookPhase["focusAreas"]>[number];
+export type AttentionItem = { focusId: string; label: string };
+
+const readableKey = (key: string) => ({
+  do: "Action", owner: "Owner", when: "Date", confirmation: "Confirmation details",
+  audience: "Audience", leaderDo: "Leader action", audienceDo: "Expected behavior",
+  messages: "Talking points", materials: "Preparation materials", channel: "Channel",
+  changing: "What is changing", know: "What people need to know", support: "Support needed",
+  feedback: "Feedback or questions", notes: "Notes or dependencies",
+} as Record<string, string>)[key] ?? key.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase());
+
+function isMissing(valueToCheck: unknown) {
+  return typeof valueToCheck !== "string" || !valueToCheck.trim() || valueToCheck.includes(NEEDS_INPUT);
+}
+
+export function focusAreaSignature(phase: PlaybookPhase, focus: FocusArea) {
+  const actions = phase.actions.filter((item) => focus.actionIds?.includes(item.id));
+  const tables = (phase.tables ?? []).filter((table) => focus.tableIds?.includes(table.id));
+  return JSON.stringify({ actions, tables });
+}
+
+export function focusAreaAttention(phase: PlaybookPhase, focus: FocusArea): AttentionItem[] {
+  const items: AttentionItem[] = [];
+  const actions = phase.actions.filter((item) => focus.actionIds?.includes(item.id));
+  actions.forEach((item, actionIndex) => {
+    (["do", "owner", "when"] as const).forEach((key) => {
+      if (isMissing(item[key])) items.push({ focusId: focus.id, label: `${focus.title}: ${readableKey(key)}${actions.length > 1 ? ` ${actionIndex + 1}` : ""}` });
+    });
+    if (isMissing(item.confirmation)) items.push({ focusId: focus.id, label: `${focus.title}: Confirmation details${actions.length > 1 ? ` ${actionIndex + 1}` : ""}` });
+    Object.entries(item.details ?? {}).forEach(([key, detail]) => {
+      if (isMissing(detail)) items.push({ focusId: focus.id, label: `${focus.title}: ${readableKey(key)}${actions.length > 1 ? ` ${actionIndex + 1}` : ""}` });
+    });
+  });
+  (phase.tables ?? []).filter((table) => focus.tableIds?.includes(table.id)).forEach((table) => {
+    const requiredColumns = table.columns.filter((column) => column.required && !column.advanced);
+    table.rows.forEach((row, rowIndex) => requiredColumns.forEach((column) => {
+      if (isMissing(row[column.key])) items.push({ focusId: focus.id, label: `${table.label}: ${column.label}${table.rows.length > 1 ? ` (entry ${rowIndex + 1})` : ""}` });
+    }));
+  });
+  return [...new Map(items.map((item) => [item.label, item])).values()];
+}
+
+export function phaseAttentionItems(phase: PlaybookPhase, confirmedSections: Record<string, string> = {}) {
+  return (phase.focusAreas ?? []).flatMap((focus) => {
+    const missing = focusAreaAttention(phase, focus);
+    const key = `${phase.id}:${focus.id}`;
+    const confirmed = confirmedSections[key] === focusAreaSignature(phase, focus);
+    return missing.length ? missing : confirmed ? [] : [{ focusId: focus.id, label: `${focus.title}: Review and confirm this section` }];
+  });
+}
+
+export function phaseSummary(phase: PlaybookPhase, phases: PlaybookPhase[] = [phase]) {
+  const tables = phase.tables ?? [];
+  const needsInput = [...phase.actions.flatMap((item) => Object.values(item).filter((itemValue) => itemValue === NEEDS_INPUT)), ...tables.flatMap((table) => table.rows.flatMap((row) => Object.values(row).filter((itemValue) => itemValue === NEEDS_INPUT)))].length;
+  const names = (tableId: string, key: string) => tables.find((table) => table.id === tableId)?.rows.map((row) => row[key]).filter((item) => item && item !== NEEDS_INPUT).slice(0, 3) ?? [];
+  if (phase.id === "spark") return { title: "Your Spark Plan", items: [{ label: "Why we’re changing", values: [phase.actions[0]?.confirmation || phase.actions[0]?.do || NEEDS_INPUT] }, { label: "Priority audiences", values: names("audiences", "audience") }, { label: "Key supporters", values: names("stakeholders", "stakeholder") }], needsInput };
+  if (phase.id === "prepare") return { title: "Your Prepare Plan", items: [{ label: "Leader and manager actions", values: phase.actions.map((item) => item.do).slice(0, 3) }, { label: "Planned communications", values: names("communications", "purpose") }, { label: "Materials to create", values: names("deliverables", "deliverable") }], needsInput };
+  if (phase.id === "activate") {
+    const communications = phases.flatMap((item) => item.tables ?? []).find((table) => table.id === "communications");
+    const channels = communications?.rows.map((row) => row.channel).filter((item) => item && item !== NEEDS_INPUT).slice(0, 3) ?? [];
+    return { title: "Your Activation Plan", items: [{ label: "What happens first", values: names("launch", "action").slice(0, 1) }, { label: "Owners", values: names("launch", "owner") }, { label: "Channels used", values: channels }, { label: "What must be ready", values: names("launch", "dependency") }], needsInput };
+  }
+  return { title: "Your Sustain Plan", items: [{ label: "What will be measured", values: names("measures", "measure") }, { label: "How feedback will be collected", values: phase.actions.filter((item) => item.id === "listen-feedback").map((item) => item.use) }, { label: "Reinforcement actions", values: phase.actions.filter((item) => item.id === "reinforce-change").map((item) => item.do) }], needsInput };
+}
+
 export function nextActions(phases: PlaybookPhase[]) {
   return phases.flatMap((phase) => phase.actions.map((item) => ({ phase: phase.title, ...item })))
     .filter((item) => !item.completed && item.status.toLowerCase() !== "complete")
@@ -206,12 +382,38 @@ export function playbookWritingChecks(phases: PlaybookPhase[]) {
   ];
 }
 
-export function serializePlaybook(projectName: string, phases: PlaybookPhase[]) {
+export type DownloadKind = "full" | "communications" | "leaders";
+
+export function serializePlaybook(projectName: string, phases: PlaybookPhase[], options: { kind?: DownloadKind; confirmedSections?: Record<string, string> } = {}) {
+  const kind = options.kind ?? "full";
+  const confirmedSections = options.confirmedSections ?? {};
+  const prepare = phases.find((phase) => phase.id === "prepare");
+  if (kind === "communications") {
+    const table = prepare?.tables?.find((item) => item.id === "communications");
+    const focus = prepare?.focusAreas?.find((item) => item.id === "communications");
+    const confirmed = Boolean(prepare && focus && confirmedSections[`${prepare.id}:${focus.id}`] === focusAreaSignature(prepare, focus));
+    const columns = table?.columns.filter((column) => ["audience", "purpose", "message", "channel", "sender", "timing", "owner", "cta", "material"].includes(column.key)) ?? [];
+    return [projectName || "Change activation playbook", "COMMUNICATIONS BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", "", ...(table ? [columns.map((column) => column.label).join("\t"), ...table.rows.map((row) => columns.map((column) => row[column.key] ?? "").join("\t"))] : ["No communication actions are available."])].join("\n");
+  }
+  if (kind === "leaders") {
+    const focus = prepare?.focusAreas?.find((item) => item.id === "leaders");
+    const confirmed = Boolean(prepare && focus && confirmedSections[`${prepare.id}:${focus.id}`] === focusAreaSignature(prepare, focus));
+    const actions = prepare?.actions.filter((item) => focus?.actionIds?.includes(item.id)) ?? [];
+    const lines = [projectName || "Change activation playbook", "LEADER PREPARATION BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", ""];
+    actions.forEach((item, index) => lines.push(`ACTION ${index + 1}: ${item.do}`, `WHO: ${item.details?.audience || item.who}`, `EXPECTATION: ${item.details?.leaderDo || item.do}`, `TALKING POINTS: ${item.details?.messages || NEEDS_INPUT}`, `PREPARATION NEEDED: ${item.details?.materials || item.create}`, `CHANNEL: ${item.details?.channel || item.use}`, `OWNER: ${item.owner}`, `DATE: ${item.when}`, `DONE WHEN: ${item.doneWhen}`, ""));
+    if (!actions.length) lines.push("No leader preparation actions are available.");
+    return lines.join("\n");
+  }
   const lines = [projectName || "Change activation playbook", "Working implementation guide — human review required", "", "START HERE — YOUR NEXT 3 ACTIONS"];
   nextActions(phases).forEach((item, index) => lines.push(`${index + 1}. ${item.do} (${item.phase})`));
   lines.push("");
   for (const phase of phases) {
     lines.push(`PHASE ${phase.number} — ${phase.title.toUpperCase()}`, phase.purpose, `Grounded in: ${phase.source}`, "");
+    for (const focus of phase.focusAreas ?? []) {
+      const confirmed = confirmedSections[`${phase.id}:${focus.id}`] === focusAreaSignature(phase, focus);
+      lines.push(`${focus.title}: ${confirmed ? "CONFIRMED" : "NEEDS REVIEW"}`);
+    }
+    lines.push("");
     lines.push("INSTRUCTIONS", `Purpose: ${phase.instructions.purpose}`, `What to do: ${phase.instructions.whatToDo}`, `Where to enter it: ${phase.instructions.whereToEnter}`, `Required inputs: ${phase.instructions.requiredInputs}`, `Completion criteria: ${phase.instructions.completionCriteria}`, `Example: ${phase.instructions.example}`, "");
     for (const item of phase.actions) {
       lines.push(`[${item.completed ? "x" : " "}] ${item.do}`, `WHO: ${item.who}`, `USE: ${item.use}`, `CREATE: ${item.create}`, `OWNER: ${item.owner}`, `WHEN: ${item.when}`, `WHY: ${item.why}`, `DONE WHEN: ${item.doneWhen}`, `STATUS: ${item.status}`, `CONFIRM: ${item.confirmation}`, `HUMAN REVIEW: ${item.humanReview}`, "");
@@ -219,8 +421,9 @@ export function serializePlaybook(projectName: string, phases: PlaybookPhase[]) 
       if (item.details) lines.push("");
     }
     for (const table of phase.tables ?? []) {
-      lines.push(table.label, table.columns.map((column) => column.label).join("\t"));
-      table.rows.forEach((row) => lines.push(table.columns.map((column) => row[column.key] ?? "").join("\t")));
+      const conciseColumns = table.columns.filter((column) => !column.advanced);
+      lines.push(table.label, conciseColumns.map((column) => column.label).join("\t"));
+      table.rows.forEach((row) => lines.push(conciseColumns.map((column) => row[column.key] ?? "").join("\t")));
       lines.push("");
     }
     if (phase.checklist?.length) {

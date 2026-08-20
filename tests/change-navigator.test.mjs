@@ -2,22 +2,32 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const projectRoot = new URL("../", import.meta.url);
-
-test("prototype implements the required eight-phase editable playbook", async () => {
+test("prototype implements the required four-phase guided playbook", async () => {
   const [page, logic] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/playbook.ts", import.meta.url), "utf8"),
   ]);
   assert.match(page, /\.docx only/);
   assert.match(page, /processed in this browser/);
-  assert.match(page, /setPlan\(makePlaybook/);
-  assert.match(page, /serializePlaybook\(intake\.projectName, plan\)/);
+  assert.match(page, /const generated = makePlaybook/);
+  assert.match(page, /setCurrentPhaseIndex/);
+  assert.match(page, /phaseSummary/);
+  assert.match(page, /serializePlaybook\(intake\.projectName, plan, \{ kind, confirmedSections \}\)/);
   assert.match(page, /Your next 3 actions/);
   assert.match(page, /Mark complete/);
   assert.match(page, /addTableRow/);
+  assert.match(page, /addPhaseAction/);
   assert.match(page, /removeTableRow/);
-  assert.equal((logic.match(/number: [1-8], title:/g) ?? []).length, 8);
+  assert.match(logic, /title: "Spark"/);
+  assert.match(logic, /title: "Prepare"/);
+  assert.match(logic, /title: "Activate"/);
+  assert.match(logic, /title: "Sustain"/);
+  assert.match(page, /\+ Add another/);
+  assert.match(page, /Confirm this section/);
+  assert.match(page, /Needs attention/);
+  assert.match(page, /Create &amp; Download My Activation Plan/);
+  assert.match(page, /Download Communications Brief/);
+  assert.match(page, /Download Leader Preparation Brief/);
 });
 
 test("governance and writing guardrails are visible in the implementation", async () => {
