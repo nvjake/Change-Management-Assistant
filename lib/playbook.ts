@@ -90,7 +90,7 @@ export function separateSparkSources(text: string) {
     .trim();
   return { content, references: [...new Set(references)].join("\n") };
 }
-export function collectPrepareContext(intake: Intake, assessment: Assessment, inputs: PrepareGenerationInputs = {}) {
+export function collectProjectContext(intake: Intake, assessment: Assessment, inputs: PrepareGenerationInputs = {}) {
   const sourceDocumentText = inputs.sourceDocumentText?.trim() ?? "";
   const evidencePack = inputs.evidencePack?.trim() || intake.externalEvidence?.trim() || "";
   const connectorRequest = inputs.connectorRequest?.trim() ?? "";
@@ -121,6 +121,7 @@ export function collectPrepareContext(intake: Intake, assessment: Assessment, in
     signalText,
   };
 }
+export const collectPrepareContext = collectProjectContext;
 const status = "Not started";
 export const STATUS_OPTIONS = ["Not started", "In progress", "On hold", "Complete"];
 export const IMPACT_OPTIONS = [
@@ -143,15 +144,15 @@ function action(id: string, fields: Partial<PlaybookAction> & Pick<PlaybookActio
   return {
     id,
     do: fields.do,
-    who: fields.who ?? NEEDS_INPUT,
+    who: fields.who ?? "Relevant Project Role or Audience — confirm",
     use: fields.use ?? "Working session",
     create: fields.create ?? "Decision or completed action",
-    when: fields.when ?? NEEDS_INPUT,
+    when: fields.when ?? "Suggested — confirm: Sequence this before the related launch or communication milestone",
     why: fields.why,
     doneWhen: fields.doneWhen,
-    owner: fields.owner ?? NEEDS_INPUT,
+    owner: fields.owner ?? "Change Owner — confirm name",
     status: fields.status ?? status,
-    confirmation: fields.confirmation ?? NEEDS_INPUT,
+    confirmation: fields.confirmation ?? "Confirm the recommendation, owner, timing, dependencies, and completion evidence.",
     humanReview: fields.humanReview ?? "No — confirm before use",
     completed: false,
     details: fields.details,
@@ -159,7 +160,7 @@ function action(id: string, fields: Partial<PlaybookAction> & Pick<PlaybookActio
 }
 
 function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generationInputs: PrepareGenerationInputs = {}): PlaybookPhase[] {
-  const prepareContext = collectPrepareContext(intake, assessment, generationInputs);
+  const prepareContext = collectProjectContext(intake, assessment, generationInputs);
   const audiences = list(intake.audiences).length ? list(intake.audiences) : [NEEDS_INPUT];
   const change = value(intake.changeSummary);
   const outcome = value(intake.outcome);
@@ -307,9 +308,9 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generation
   });
 
   const launchRows = [
-    { period: "Before launch", action: "Confirm audience, owner, timing, sender, materials, support, and required reviews", owner: NEEDS_INPUT, date: NEEDS_INPUT, status, dependency: "Open decisions resolved", evidence: "Readiness decision" },
-    { period: "Launch day / launch period", action: "Deliver the approved communication and make support available", owner: NEEDS_INPUT, date: timing, status, dependency: "Approved materials and ready support", evidence: "Sent message, meeting notes, or published material" },
-    ...(!isSmall ? [{ period: "Immediately after launch", action: "Collect questions and resolve urgent friction", owner: NEEDS_INPUT, date: NEEDS_INPUT, status, dependency: "Feedback path active", evidence: "Issue log and owner responses" }] : []),
+    { period: "Before launch", action: "Confirm audience, owner, timing, sender, materials, support, and required reviews", owner: "Change Owner — confirm name", date: `Before launch; work backward from ${prepareTiming}`, status, dependency: "Leader alignment, communication materials, audience support, and open decisions are ready", evidence: `Readiness decision informed by: ${readiness}` },
+    { period: "Launch day / launch period", action: "Deliver the reviewed communication and make support available", owner: "Communications Owner or Change Owner — confirm name", date: prepareTiming, status, dependency: "Reviewed materials, prepared managers, and an active support path", evidence: "Sent message, meeting notes, or published material" },
+    ...(!isSmall ? [{ period: "Immediately after launch", action: "Collect questions and resolve urgent friction", owner: "Change Owner or Support Owner — confirm name", date: `Immediately after ${prepareTiming}`, status, dependency: "Feedback and escalation path is active", evidence: "Issue log, response owners, and resolved urgent questions" }] : []),
   ];
 
   return [
@@ -325,13 +326,13 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generation
     { id: "materials", number: 5, title: "Prepare the materials", purpose: "Create only the items this change needs, using supported facts and clearly marked suggestions.", source, instructions: instruction("Turn the plan into usable materials.", "Confirm which deliverables are needed, assign them, and complete the missing content.", "Use the Deliverables checklist below.", "Deliverable, audience, owner, due date, status, supported content, and missing information.", "Each required deliverable has an owner, due date, status, and enough information to draft or complete it.", "Manager talking points — People managers — owner assigned — due October 5 — In progress."), actions: [], tables: [{ id: "deliverables", label: "Deliverables checklist", columns: [{ key: "deliverable", label: "Deliverable", required: true, control: "select", options: SUPPORT_MATERIALS }, { key: "why", label: "Why needed", width: "large", required: true, control: "textarea" }, { key: "audience", label: "Audience", required: true, control: "multi-select", options: audiences }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "due", label: "Due date", required: true, control: "date" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "available", label: "Source-supported content", width: "large", control: "textarea" }, { key: "missing", label: "Needs user input", width: "large", control: "textarea" }, { key: "draft", label: "Suggested language / outline", width: "large", control: "textarea" }], rows: deliverableRows }] },
     { id: "readiness", number: 6, title: "Prepare people for the change", purpose: "Make sure people can act, get help, and raise issues safely.", source: "Source evidence + Risk Signal & Readiness Gate", instructions: instruction("Prepare each audience to understand and use the change.", "Create one entry for every audience that needs different communication, training, or support.", "Use the stacked Audience preparation entries below; add another entry when needed.", "Audience, change, knowledge, action, support, channel, owner, completion date, review decision, status, and feedback path.", "Each affected audience has a complete, assigned, dated preparation entry.", "Customer Care — learn the new routing steps — job aid and guided practice — owner assigned — due October 10."), actions: peopleActions },
     { id: "launch", number: 7, title: "Launch", purpose: "Move through launch in order and keep proof that each gate is ready.", source, instructions: instruction("Execute the approved plan in order.", "Confirm each launch action, dependency, owner, date, and evidence of completion.", "Use the Chronological launch checklist below.", "Period, action, owner, target date, status, dependency, and evidence.", "Every relevant launch action has an owner, date, status, and proof requirement.", "Before launch — confirm materials and support — owner assigned — October 10 — Complete."), actions: [], tables: [{ id: "launch", label: "Chronological launch checklist", columns: [{ key: "period", label: "Period", required: true, control: "select", options: ["Before launch", "Launch day / launch period", "Immediately after launch"] }, { key: "action", label: "Action", width: "large", required: true, control: "textarea" }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "date", label: "Target date", required: true, control: "date" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "dependency", label: "Dependency", width: "large", control: "textarea" }, { key: "evidence", label: "Evidence required", width: "large", required: true, control: "textarea" }], rows: launchRows }] },
-    { id: "reinforce", number: 8, title: "Reinforce and measure", purpose: "Use practical evidence to see what is working and decide what to do next.", source: "Source evidence + Change Navigation framework", instructions: instruction("Define how success will be measured and what happens when results fall short.", "Create a measure with a baseline, target, data source, owner, review date, and reinforcement action.", "Use the Measurement and reinforcement entries below.", "Measure, type, baseline, target, data source, frequency, reinforcement, owner, review date, review decision, and status.", "A measure is complete only when baseline, target, data source, owner, and review date are defined.", "Routing accuracy — Quality — baseline 82% — target 95% — weekly dashboard — review November 1."), actions: [], tables: [{ id: "measures", label: "Measurement and reinforcement entries", columns: [{ key: "measure", label: "Measure name", required: true, control: "text" }, { key: "measureType", label: "Measure type", required: true, control: "select", options: ["Adoption", "Usage", "Proficiency", "Sentiment", "Quality", "Risk", "Business outcome", "Other"] }, { key: "baseline", label: "Baseline", required: true, control: "text" }, { key: "target", label: "Target", required: true, control: "text" }, { key: "current", label: "Current result", control: "text" }, { key: "dataSource", label: "Data source", required: true, control: "text" }, { key: "frequency", label: "Measurement frequency", required: true, control: "select", options: ["Weekly", "Monthly", "Quarterly", "At milestone", "One time"] }, { key: "reinforcement", label: "Reinforcement action", width: "large", control: "textarea" }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "reviewDate", label: "Next review date", required: true, control: "date" }, { key: "humanReview", label: "Human review required", required: true, control: "yes-no" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "findings", label: "Findings and next steps", width: "large", control: "textarea" }], rows: [{ measure: "Adoption of the expected behavior", measureType: "Adoption", baseline: NEEDS_INPUT, target: NEEDS_INPUT, current: NEEDS_INPUT, dataSource: NEEDS_INPUT, frequency: isSmall ? "At milestone" : "Weekly", reinforcement: isSmall ? "Follow up through the manager if adoption is unclear." : "Use feedback and adoption gaps to choose a targeted reminder, FAQ update, or coaching action.", owner: NEEDS_INPUT, reviewDate: NEEDS_INPUT, humanReview: governed ? "Yes" : "No", status, findings: NEEDS_INPUT }] }] },
+    { id: "reinforce", number: 8, title: "Reinforce and measure", purpose: "Use practical evidence to see what is working and decide what to do next.", source: "Source evidence + Change Navigation framework", instructions: instruction("Define how success will be measured and what happens when results fall short.", "Create a measure with a baseline, target, data source, owner, review date, and reinforcement action.", "Use the Measurement and reinforcement entries below.", "Measure, type, baseline, target, data source, frequency, reinforcement, owner, review date, review decision, and status.", "A measure is complete only when baseline, target, data source, owner, and review date are defined.", "Routing accuracy — Quality — baseline 82% — target 95% — weekly dashboard — review November 1."), actions: [], tables: [{ id: "measures", label: "Measurement and reinforcement entries", columns: [{ key: "measure", label: "Measure name", required: true, control: "text" }, { key: "measureType", label: "Measure type", required: true, control: "select", options: ["Adoption", "Usage", "Proficiency", "Sentiment", "Quality", "Risk", "Business outcome", "Other"] }, { key: "baseline", label: "Baseline", required: true, control: "text" }, { key: "target", label: "Target", required: true, control: "text" }, { key: "current", label: "Current result", control: "text" }, { key: "dataSource", label: "Data source", required: true, control: "text" }, { key: "frequency", label: "Measurement frequency", required: true, control: "select", options: ["Weekly", "Monthly", "Quarterly", "At milestone", "One time"] }, { key: "reinforcement", label: "Reinforcement action", width: "large", control: "textarea" }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "reviewDate", label: "Next review date", required: true, control: "date" }, { key: "humanReview", label: "Human review required", required: true, control: "yes-no" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "findings", label: "Findings and next steps", width: "large", control: "textarea" }], rows: [{ measure: "Adoption of the expected behavior", measureType: "Adoption", baseline: "Suggested — confirm: Establish the current level before or at launch", target: "Suggested — confirm: Define the observable adoption level expected after launch", current: "Not measured yet — update after launch", dataSource: readiness !== NEEDS_INPUT ? `Existing readiness evidence and operational reporting — confirm source: ${cleanMessageText(readiness)}` : "Suggested — confirm: Existing operational reporting, completion records, or manager feedback", frequency: isSmall ? "At milestone" : "Weekly", reinforcement: isSmall ? "Follow up through the manager if adoption is unclear." : "Use feedback and adoption gaps to choose a targeted reminder, FAQ update, or coaching action.", owner: "Change Owner or Business Owner — confirm name", reviewDate: `After launch; review against ${prepareTiming}`, humanReview: governed ? "Yes" : "No", status, findings: "Suggested — update after the first review with findings, decisions, and next actions" }] }] },
   ];
 }
 
 export function makePlaybook(intake: Intake, assessment: Assessment, generationInputs: PrepareGenerationInputs = {}): PlaybookPhase[] {
   const detailed = makeDetailedPlaybook(intake, assessment, generationInputs);
-  const sparkContext = collectPrepareContext(intake, assessment, generationInputs);
+  const sparkContext = collectProjectContext(intake, assessment, generationInputs);
   const sparkPlanTiming = sparkContext.timing !== NEEDS_INPUT ? separateSparkSources(sparkContext.timing).content : "Suggested — confirm: Work backward from the planned launch or milestone.";
   const byId = (id: string) => detailed.find((phase) => phase.id === id)!;
   const understand = byId("understand");
@@ -379,8 +380,9 @@ export function makePlaybook(intake: Intake, assessment: Assessment, generationI
   const launchTable = limitTable(launch.tables![0], ["action", "owner", "date", "status", "dependency", "evidence"], { owner: "owners", date: "dates" });
   launchTable.label = "Launch Timeline";
   launchTable.description = "Use this timeline to put launch activities in the order they need to happen. Add what needs to happen, who owns it, and when it should happen.";
-  launchTable.columns = launchTable.columns.map((column) => column.key === "action" ? { ...column, label: "What needs to happen?" } : column.key === "owner" ? { ...column, label: "Who owns it?" } : column.key === "date" ? { ...column, label: "When?" } : column.key === "status" ? { ...column, label: "Is it complete?" } : column.key === "evidence" ? { ...column, label: "Done when" } : column);
+  launchTable.columns = launchTable.columns.map((column) => column.key === "action" ? { ...column, label: "What needs to happen?" } : column.key === "owner" ? { ...column, label: "Who owns it?" } : column.key === "date" ? { ...column, label: "When?", control: "text" } : column.key === "status" ? { ...column, label: "Is it complete?" } : column.key === "evidence" ? { ...column, label: "Done when" } : column);
   const measuresTable = limitTable(reinforce.tables![0], ["measure", "baseline", "target", "dataSource", "owner", "reviewDate"], { owner: "owners", reviewDate: "dates" });
+  measuresTable.columns = measuresTable.columns.map((column) => column.key === "reviewDate" ? { ...column, control: "text", label: "Next review timing" } : column);
   const sustainActions = [
     action("listen-feedback", { do: "Collect and review feedback from affected people and managers", who: value(intake.audiences), use: "Manager check-ins, questions, or a short pulse", create: "Feedback themes and follow-up owners", when: "After launch", why: "Feedback shows where people need more clarity or support.", doneWhen: "The main themes have an owner and next step." }),
     action("reinforce-change", { do: "Reinforce the change where adoption or confidence is low", who: value(intake.audiences), use: `${suggested}: targeted reminder, FAQ update, coaching, or office hours`, create: "One targeted reinforcement action", when: "When feedback or measures show a gap", why: "Focused reinforcement fixes real gaps without adding noise.", doneWhen: "The gap improves or a new action is assigned." }),
@@ -565,6 +567,56 @@ export function playbookWritingChecks(phases: PlaybookPhase[]) {
 
 export type DownloadKind = "full" | "communications" | "leaders";
 
+function addExportSource(sources: Map<string, string>, value: string) {
+  const entry = value.replace(/^\s*(?:sources?|references?|links?|urls?|documents?|citations?|evidence)\s*:\s*/i, "").replace(/\s+/g, " ").trim().replace(/[.,;]+$/, "");
+  if (!entry || /^(?:none|n\/a|not provided)$/i.test(entry) || /^(?:turn\d+(?:search|fetch|view)\d+|(?:source|retrieval)[-_ ]?id\b)/i.test(entry)) return;
+  const key = entry.toLowerCase();
+  if (!sources.has(key)) sources.set(key, entry);
+}
+
+function collectExportSources(value: string, sources: Map<string, string>, includePlainText = false) {
+  const text = value || "";
+  for (const match of text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gi)) {
+    addExportSource(sources, match[1]);
+    addExportSource(sources, match[2]);
+  }
+  for (const match of text.matchAll(/https?:\/\/[^\s)\]}>,]+/gi)) addExportSource(sources, match[0]);
+  for (const match of text.matchAll(/\[([^\]]{2,160})\]/g)) addExportSource(sources, match[1]);
+  for (const match of text.matchAll(/\b(?:source|reference|citation|evidence|document)\s*:\s*([^;\n]+?)(?=\s+https?:\/\/|$|[.;])/gi)) addExportSource(sources, match[1]);
+  text.split(/\r?\n/).forEach((line) => {
+    if (/^\s*(?:sources?|references?|links?|urls?|documents?|citations?|evidence|source ids?|retrieval ids?)\s*:/i.test(line)) {
+      line.replace(/^\s*[^:]+:\s*/i, "").split(/\s*[|;]\s*/).forEach((entry) => addExportSource(sources, entry));
+    } else if (includePlainText && line.trim()) {
+      const withoutUrls = line.replace(/https?:\/\/[^\s)\]}>,]+/gi, "").trim();
+      if (withoutUrls) addExportSource(sources, withoutUrls);
+    }
+  });
+}
+
+function cleanExportNarrative(value: string | undefined, sources: Map<string, string>) {
+  const text = value || "";
+  collectExportSources(text, sources);
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*(?:sources?|references?|links?|urls?|documents?|citations?|evidence|source ids?|retrieval ids?)\s*:/i.test(line))
+    .join("\n")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gi, "")
+    .replace(/\b(?:source|reference|citation|evidence|document)\s*:\s*([^;\n]+?)(?=\s+https?:\/\/|$|[.;])/gi, "")
+    .replace(/https?:\/\/[^\s)\]}>,]+/gi, "")
+    .replace(/\[([^\]]{2,160})\]/g, "")
+    .replace(/\b(?:turn\d+(?:search|fetch|view)\d+|(?:source|retrieval)[-_ ]?id\s*[:=]?\s*[^\s,;]+)/gi, "")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").replace(/\s+([.,;:])/g, "$1").trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function appendExportSources(lines: string[], sources: Map<string, string>) {
+  if (!sources.size) return;
+  lines.push("", "Sources / References", ...Array.from(sources.values()).map((source) => `- ${source}`));
+}
+
 export function serializePlaybook(projectName: string, phases: PlaybookPhase[], options: { kind?: DownloadKind; confirmedSections?: Record<string, string> } = {}) {
   const kind = options.kind ?? "full";
   const confirmedSections = options.confirmedSections ?? {};
@@ -573,38 +625,62 @@ export function serializePlaybook(projectName: string, phases: PlaybookPhase[], 
     const table = prepare?.tables?.find((item) => item.id === "communications");
     const focus = prepare?.focusAreas?.find((item) => item.id === "communications");
     const confirmed = Boolean(prepare && focus && confirmedSections[`${prepare.id}:${focus.id}`] === focusAreaSignature(prepare, focus));
-    const columns = table?.columns.filter((column) => ["sequence", "audience", "purpose", "message", "sources", "channel", "sender", "timing", "owner", "cta", "material"].includes(column.key)) ?? [];
-    return [projectName || "Change activation playbook", "COMMUNICATIONS BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", "", ...(table ? [columns.map((column) => column.label).join("\t"), ...table.rows.map((row) => columns.map((column) => row[column.key] ?? "").join("\t"))] : ["No communication actions are available."])].join("\n");
+    const sources = new Map<string, string>();
+    const fields = [
+      ["audience", "Audience"], ["purpose", "Purpose"], ["message", "Key Message"], ["sender", "Recommended Sender"],
+      ["channel", "Recommended Channel"], ["timing", "Timing / Sequence"], ["cta", "Call to Action"],
+      ["material", "Material to Create"], ["owner", "Owner"],
+    ];
+    const lines = [projectName || "Change activation playbook", "COMMUNICATIONS BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", ""];
+    if (table?.rows.length) {
+      table.rows.forEach((row, index) => {
+        collectExportSources(row.sources || "", sources, true);
+        lines.push(`COMMUNICATION ${index + 1}`);
+        fields.forEach(([key, label]) => lines.push(`${label}: ${cleanExportNarrative(row[key], sources)}`));
+        lines.push("");
+      });
+    } else lines.push("No communication actions are available.");
+    appendExportSources(lines, sources);
+    return lines.join("\n").trim();
   }
   if (kind === "leaders") {
     const focus = prepare?.focusAreas?.find((item) => item.id === "leaders");
     const confirmed = Boolean(prepare && focus && confirmedSections[`${prepare.id}:${focus.id}`] === focusAreaSignature(prepare, focus));
     const actions = prepare?.actions.filter((item) => focus?.actionIds?.includes(item.id)) ?? [];
+    const sources = new Map<string, string>();
     const lines = [projectName || "Change activation playbook", "LEADER PREPARATION BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", ""];
-    actions.forEach((item, index) => lines.push(`ACTION ${index + 1}: ${item.do}`, `AUDIENCE: ${item.details?.audience || item.who}`, `WHAT THEY NEED TO KNOW: ${item.details?.know || NEEDS_INPUT}`, `WHAT THEY NEED TO DO: ${item.details?.leaderDo || item.do}`, `WHY IT MATTERS: ${item.details?.why || item.why}`, `KEY MESSAGE OR TALKING POINTS: ${item.details?.messages || NEEDS_INPUT}`, `COMMUNICATION APPROACH: ${item.details?.channel || item.use}`, `PREPARATION NEEDED: ${item.details?.materials || item.create}`, `TIMING OR SEQUENCE: ${item.when}`, `DONE WHEN: ${item.doneWhen}`, `SOURCES / EVIDENCE: ${item.details?.sources || "Uploaded document"}`, `OWNER: ${item.owner}`, ""));
+    actions.forEach((item, index) => {
+      collectExportSources(item.details?.sources || "", sources, true);
+      lines.push(`ACTION ${index + 1}: ${cleanExportNarrative(item.do, sources)}`, `AUDIENCE: ${cleanExportNarrative(item.details?.audience || item.who, sources)}`, `WHAT THEY NEED TO KNOW: ${cleanExportNarrative(item.details?.know || NEEDS_INPUT, sources)}`, `WHAT THEY NEED TO DO: ${cleanExportNarrative(item.details?.leaderDo || item.do, sources)}`, `WHY IT MATTERS: ${cleanExportNarrative(item.details?.why || item.why, sources)}`, `KEY MESSAGE OR TALKING POINTS: ${cleanExportNarrative(item.details?.messages || NEEDS_INPUT, sources)}`, `COMMUNICATION APPROACH: ${cleanExportNarrative(item.details?.channel || item.use, sources)}`, `PREPARATION NEEDED: ${cleanExportNarrative(item.details?.materials || item.create, sources)}`, `TIMING OR SEQUENCE: ${cleanExportNarrative(item.when, sources)}`, `DONE WHEN: ${cleanExportNarrative(item.doneWhen, sources)}`, `OWNER: ${cleanExportNarrative(item.owner, sources)}`, "");
+    });
     if (!actions.length) lines.push("No leader preparation actions are available.");
-    return lines.join("\n");
+    appendExportSources(lines, sources);
+    return lines.join("\n").trim();
   }
+  const sources = new Map<string, string>();
   const lines = [projectName || "Change activation playbook", "Working implementation guide — human review required", "", "START HERE — YOUR NEXT 3 ACTIONS"];
-  nextActions(phases).forEach((item, index) => lines.push(`${index + 1}. ${item.do} (${item.phase})`));
+  nextActions(phases).forEach((item, index) => lines.push(`${index + 1}. ${cleanExportNarrative(item.do, sources)} (${item.phase})`));
   lines.push("");
   for (const phase of phases) {
-    lines.push(`PHASE ${phase.number} — ${phase.title.toUpperCase()}`, phase.purpose, `Grounded in: ${phase.source}`, "");
+    lines.push(`PHASE ${phase.number} — ${phase.title.toUpperCase()}`, cleanExportNarrative(phase.purpose, sources), "");
     for (const focus of phase.focusAreas ?? []) {
       const confirmed = confirmedSections[`${phase.id}:${focus.id}`] === focusAreaSignature(phase, focus);
       lines.push(`${focus.title}: ${confirmed ? "CONFIRMED" : "NEEDS REVIEW"}`);
     }
     lines.push("");
-    lines.push("INSTRUCTIONS", `Purpose: ${phase.instructions.purpose}`, `What to do: ${phase.instructions.whatToDo}`, `Where to enter it: ${phase.instructions.whereToEnter}`, `Required inputs: ${phase.instructions.requiredInputs}`, `Completion criteria: ${phase.instructions.completionCriteria}`, `Example: ${phase.instructions.example}`, "");
+    lines.push("INSTRUCTIONS", `Purpose: ${cleanExportNarrative(phase.instructions.purpose, sources)}`, `What to do: ${cleanExportNarrative(phase.instructions.whatToDo, sources)}`, `Where to enter it: ${cleanExportNarrative(phase.instructions.whereToEnter, sources)}`, `Required inputs: ${cleanExportNarrative(phase.instructions.requiredInputs, sources)}`, `Completion criteria: ${cleanExportNarrative(phase.instructions.completionCriteria, sources)}`, `Example: ${cleanExportNarrative(phase.instructions.example, sources)}`, "");
     for (const item of phase.actions) {
-      lines.push(`[${item.completed ? "x" : " "}] ${item.do}`, `WHO: ${item.who}`, `USE: ${item.use}`, `CREATE: ${item.create}`, `OWNER: ${item.owner}`, `WHEN: ${item.when}`, `WHY: ${item.why}`, `DONE WHEN: ${item.doneWhen}`, `STATUS: ${item.status}`, `CONFIRM: ${item.confirmation}`, `HUMAN REVIEW: ${item.humanReview}`, "");
-      if (item.details) Object.entries(item.details).forEach(([key, detail]) => lines.push(`${key}: ${detail}`));
+      lines.push(`[${item.completed ? "x" : " "}] ${cleanExportNarrative(item.do, sources)}`, `WHO: ${cleanExportNarrative(item.who, sources)}`, `USE: ${cleanExportNarrative(item.use, sources)}`, `CREATE: ${cleanExportNarrative(item.create, sources)}`, `OWNER: ${cleanExportNarrative(item.owner, sources)}`, `WHEN: ${cleanExportNarrative(item.when, sources)}`, `WHY: ${cleanExportNarrative(item.why, sources)}`, `DONE WHEN: ${cleanExportNarrative(item.doneWhen, sources)}`, `STATUS: ${cleanExportNarrative(item.status, sources)}`, `CONFIRM: ${cleanExportNarrative(item.confirmation, sources)}`, `HUMAN REVIEW: ${cleanExportNarrative(item.humanReview, sources)}`, "");
+      if (item.details) Object.entries(item.details).forEach(([key, detail]) => key === "sources" || key === "references" ? collectExportSources(detail, sources, true) : lines.push(`${key}: ${cleanExportNarrative(detail, sources)}`));
       if (item.details) lines.push("");
     }
     for (const table of phase.tables ?? []) {
-      const conciseColumns = table.columns.filter((column) => !column.advanced);
+      const conciseColumns = table.columns.filter((column) => !column.advanced && !["sources", "references", "evidence"].includes(column.key));
       lines.push(table.label, conciseColumns.map((column) => column.label).join("\t"));
-      table.rows.forEach((row) => lines.push(conciseColumns.map((column) => row[column.key] ?? "").join("\t")));
+      table.rows.forEach((row) => {
+        ["sources", "references", "evidence"].forEach((key) => collectExportSources(row[key] || "", sources, true));
+        lines.push(conciseColumns.map((column) => cleanExportNarrative(row[column.key], sources)).join("\t"));
+      });
       lines.push("");
     }
     if (phase.checklist?.length) {
@@ -619,5 +695,6 @@ export function serializePlaybook(projectName: string, phases: PlaybookPhase[], 
     ...(phase.tables ?? []).flatMap((table) => table.rows.flatMap((row, rowIndex) => Object.entries(row).filter(([, itemValue]) => itemValue === NEEDS_INPUT).map(([key]) => `${phase.title}: ${table.label} row ${rowIndex + 1} — ${key}`))),
   ]);
   lines.push("OPEN DECISIONS / NEEDS USER INPUT", ...open.map((item) => `- ${item}`));
-  return lines.join("\n");
+  appendExportSources(lines, sources);
+  return lines.join("\n").trim();
 }

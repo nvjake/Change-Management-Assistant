@@ -261,15 +261,15 @@ export default function Home() {
       return { ...phase, actions: [...phase.actions, {
         ...template,
         id: `${phase.id}-${Date.now()}`,
-        do: NEEDS_INPUT,
-        who: NEEDS_INPUT,
-        owner: NEEDS_INPUT,
-        when: NEEDS_INPUT,
+        do: "Suggested — confirm: Add the next practical action needed to support or reinforce the change",
+        who: template.who === NEEDS_INPUT ? "Relevant Project Role or Audience — confirm" : template.who,
+        owner: "Change Owner or Business Owner — confirm name",
+        when: template.when === NEEDS_INPUT ? "Suggested — confirm: Sequence after the related milestone or review" : template.when,
         status: "Not started",
-        confirmation: NEEDS_INPUT,
-        humanReview: "No",
+        confirmation: "Confirm the action, audience, owner, timing, dependency, and expected evidence.",
+        humanReview: "No — confirm before use",
         completed: false,
-        details: Object.fromEntries(Object.keys(template.details ?? {}).map((key) => [key, NEEDS_INPUT])),
+        details: { ...template.details },
       }] };
     }));
   };
@@ -300,9 +300,17 @@ export default function Home() {
   const addTableRow = (phaseIndex: number, tableIndex: number) => {
     setPlan((current) => current.map((phase, currentPhaseIndex) => currentPhaseIndex !== phaseIndex ? phase : {
       ...phase,
-      tables: phase.tables?.map((table, currentTableIndex) => currentTableIndex !== tableIndex ? table : {
-        ...table,
-        rows: [...table.rows, Object.fromEntries(table.columns.map((column) => [column.key, NEEDS_INPUT]))],
+      tables: phase.tables?.map((table, currentTableIndex) => {
+        if (currentTableIndex !== tableIndex) return table;
+        const base = table.rows[table.rows.length - 1] ?? Object.fromEntries(table.columns.map((column) => [column.key, column.options?.[0] ?? `Suggested — confirm ${column.label.toLowerCase()}`]));
+        const row = { ...base, status: "Not started" };
+        if (table.id === "audiences") Object.assign(row, { audience: "Additional Affected Audience — confirm", impact: "Medium", effect: "Suggested — confirm: Describe how this audience’s work or behavior is likely to change.", do: "Review the change, complete the expected action, and use the support path when help is needed." });
+        if (table.id === "stakeholders") Object.assign(row, { stakeholder: "Additional Stakeholder — confirm role and name", role: "Project Supporter — confirm", need: "Confirm the decision, support, or action needed from this stakeholder.", owner: "Change Owner — confirm name" });
+        if (table.id === "communications") Object.assign(row, { sequence: String(table.rows.length + 1), purpose: "Reinforce the expected action and respond to questions", message: base.message || "Reinforce what is changing, why it matters, and what the audience should do next.", timing: "After the prior communication or when feedback shows reinforcement is needed", owner: "Communications Owner — confirm name", status: "Not started" });
+        if (table.id === "deliverables") Object.assign(row, { deliverable: "Other", why: "Suggested — confirm: Create this only if it closes a communication, understanding, or support gap.", owner: "Change Owner — confirm name", status: "Not started" });
+        if (table.id === "launch") Object.assign(row, { action: "Suggested — confirm: Add the next launch action or readiness gate", owner: "Change Owner — confirm name", date: "Sequence after the prior launch action", dependency: "Prior action is complete and required support is ready", evidence: "Observable completion evidence — confirm", status: "Not started" });
+        if (table.id === "measures") Object.assign(row, { measure: "Additional adoption or outcome measure — confirm", baseline: "Suggested — confirm: Establish the current level", target: "Suggested — confirm: Define the observable improvement expected", dataSource: "Existing operational reporting or feedback — confirm", owner: "Business Owner — confirm name", reviewDate: "After the next measurement period — confirm", status: "Not started" });
+        return { ...table, rows: [...table.rows, row] };
       }),
     }));
   };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assessChange, buildConnectorRequest, NEEDS_INPUT, parseEvidencePack, type Intake } from "../lib/changeNavigator.ts";
-import { changeCoachOverview, collectPrepareContext, focusAreaAttention, focusAreaSignature, makePlaybook, nextActions, phaseSummary, reusablePlanValues, separateSparkSources, serializePlaybook } from "../lib/playbook.ts";
+import { changeCoachOverview, collectPrepareContext, collectProjectContext, focusAreaAttention, focusAreaSignature, makePlaybook, nextActions, phaseSummary, reusablePlanValues, separateSparkSources, serializePlaybook } from "../lib/playbook.ts";
 
 const intake: Intake = {
   projectName: "Care workflow update",
@@ -36,7 +36,8 @@ test("phase instructions and structured controls are defined consistently", () =
   assert.equal(impact?.columns.find((column) => column.key === "importantDates")?.advanced, false);
   assert.equal(impact?.columns.find((column) => column.key === "humanReview")?.control, "yes-no");
   const measures = playbook.find((phase) => phase.id === "sustain")?.tables?.[0];
-  assert.equal(measures?.columns.find((column) => column.key === "reviewDate")?.control, "date");
+  assert.equal(measures?.columns.find((column) => column.key === "reviewDate")?.control, "text");
+  assert.equal(measures?.columns.find((column) => column.key === "reviewDate")?.label, "Next review timing");
   assert.equal(measures?.columns.find((column) => column.key === "status")?.control, "status");
   assert.ok(measures?.columns.filter((column) => column.required).length);
 });
@@ -76,6 +77,38 @@ test("full and breakout downloads reuse plan information and flag unconfirmed co
   assert.match(leaders, /LEADER PREPARATION BRIEF/);
   assert.match(leaders, /Align on the change story/);
   assert.match(full, /Why this change: NEEDS REVIEW/);
+});
+
+test("communications and full downloads keep narrative clean and collect sources once at the bottom", () => {
+  const playbook = makePlaybook(intake, assessChange(intake));
+  const communication = playbook.find((phase) => phase.id === "prepare")!.tables!.find((table) => table.id === "communications")!.rows[0];
+  communication.message = "Use the revised workflow at launch. [Whitepaper](https://example.com/guide) [Decision Memo] source-id: ABC-123";
+  communication.timing = "Brief managers before launch. Citation: Pilot review https://example.com/pilot";
+  communication.sources = "SharePoint decision log\nhttps://example.com/guide";
+
+  for (const kind of ["communications", "full"] as const) {
+    const output = serializePlaybook(intake.projectName, playbook, { kind });
+    const [narrative, sourceSection = ""] = output.split("\nSources / References\n");
+    assert.match(narrative, /Use the revised workflow at launch/);
+    assert.doesNotMatch(narrative, /https?:\/\/|\[Whitepaper\]|\[Decision Memo\]|source-id|citation\s*:/i);
+    assert.match(sourceSection, /Whitepaper/);
+    assert.match(sourceSection, /Decision Memo/);
+    assert.match(sourceSection, /https:\/\/example\.com\/guide/);
+    assert.match(sourceSection, /Pilot review/);
+    assert.doesNotMatch(sourceSection, /source-id|ABC-123/i);
+    assert.equal(sourceSection.match(/https:\/\/example\.com\/guide/g)?.length, 1);
+  }
+});
+
+test("generated work starts as a usable recommendation across all four phases", () => {
+  const playbook = makePlaybook(intake, assessChange(intake));
+  assert.equal(collectProjectContext(intake, assessChange(intake)).audiences[0], "Customer Care");
+  assert.ok(playbook.every((phase) => phase.focusAreas!.every((focus) => focusAreaAttention(phase, focus).length === 0)));
+  assert.ok(playbook.flatMap((phase) => phase.actions).every((item) => item.owner !== NEEDS_INPUT && item.when !== NEEDS_INPUT && item.confirmation !== NEEDS_INPUT));
+  const launch = playbook.find((phase) => phase.id === "activate")!.tables!.find((table) => table.id === "launch")!;
+  assert.ok(launch.rows.every((row) => row.owner !== NEEDS_INPUT && row.date !== NEEDS_INPUT && row.dependency !== NEEDS_INPUT && row.evidence !== NEEDS_INPUT));
+  const measures = playbook.find((phase) => phase.id === "sustain")!.tables!.find((table) => table.id === "measures")!;
+  assert.ok(measures.rows.every((row) => row.baseline !== NEEDS_INPUT && row.target !== NEEDS_INPUT && row.owner !== NEEDS_INPUT && row.reviewDate !== NEEDS_INPUT));
 });
 
 test("Change Coach overview uses transparent readiness and existing plan data", () => {
