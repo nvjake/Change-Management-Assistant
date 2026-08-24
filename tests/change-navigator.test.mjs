@@ -48,6 +48,12 @@ test("prototype implements the required four-phase guided playbook", async () =>
   assert.match(page, /\+ Add another.*affected audience/);
   assert.match(styles, /\[data-phase-id="activate"\] > \.action-list \{ display: grid; grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(styles, /\.action-list > \.audience-preparation-card,[\s\S]*\.action-list > \.add-entry \{ grid-column: 1 \/ -1; width: 100%/);
+  assert.match(page, /updateSparkNotes/);
+  assert.match(page, /Sources \/ References/);
+  assert.match(page, /spark-plan-flow/);
+  assert.match(styles, /\[data-phase-id="spark"\] > \.action-list \{ display: grid; grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(styles, /\[data-phase-id="spark"\] \.summary-grid \{ grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(styles, /\[data-phase-id="spark"\][\s\S]*overflow-wrap: anywhere/);
 });
 
 test("governance and writing guardrails are visible in the implementation", async () => {

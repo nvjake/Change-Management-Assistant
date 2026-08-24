@@ -24,6 +24,7 @@ import {
   playbookWritingChecks,
   phaseSummary,
   reusablePlanValues,
+  separateSparkSources,
   serializePlaybook,
   STATUS_OPTIONS,
 } from "../lib/playbook";
@@ -198,6 +199,19 @@ export default function Home() {
       actions: phase.actions.map((item, currentActionIndex) => currentActionIndex !== actionIndex ? item : {
         ...item,
         details: { ...item.details, [key]: value },
+      }),
+    }));
+  };
+
+  const updateSparkNotes = (phaseIndex: number, actionIndex: number, value: string) => {
+    const separated = separateSparkSources(value);
+    setPlan((current) => current.map((phase, currentPhaseIndex) => currentPhaseIndex !== phaseIndex ? phase : {
+      ...phase,
+      actions: phase.actions.map((item, currentActionIndex) => {
+        if (currentActionIndex !== actionIndex) return item;
+        const existingSources = item.details?.sources ?? "";
+        const sources = [...new Set([existingSources, separated.references].flatMap((entry) => entry.split(/\r?\n/)).map((entry) => entry.trim()).filter(Boolean))].join("\n");
+        return { ...item, confirmation: separated.content, details: { ...item.details, sources } };
       }),
     }));
   };
@@ -539,13 +553,18 @@ export default function Home() {
                         <div className="action-top">{isLeaderEntry && isEditing ? <div className="leader-entry-heading"><strong>Leader / Manager Preparation</strong><small>Review this recommendation from top to bottom, then mark it complete.</small></div> : isAudienceEntry && isEditing ? <div className="audience-entry-heading"><strong>Affected Audience Preparation — Entry {actionIndex + 1}</strong><small>Review this first draft from top to bottom, then mark the audience preparation complete.</small></div> : <label className="complete-control"><input type="checkbox" checked={item.completed} onChange={(event) => updateAction(phaseIndex, actionIndex, "completed", event.target.checked)} /><span>{item.completed ? "Complete" : "Mark complete"}</span></label>}{isStructuredEntry && phase.actions.length > 1 && <button className="remove-row" onClick={() => removePhaseAction(phaseIndex, actionIndex)}>Remove entry</button>}</div>
                         {!isEditing ? <div className={`action-preview ${isLeaderEntry ? "leader-manager-preview" : ""}`}><div><b>{isLeaderEntry ? "What they need to do" : "Do"}</b><p>{item.do}</p></div><div><b>Audience</b><p>{item.details?.audience || item.owner || item.who}</p></div><div><b>{isLeaderEntry ? "Timing or sequence" : "When"}</b><p>{item.when}</p></div><div><b>Done when</b><p>{item.confirmation || item.doneWhen}</p></div><button className="edit-entry" onClick={() => setEditingActionId(item.id)}>Review or edit</button></div> : <>
                         {item.id === "confirm-change" ? <>
+                          {(() => { const separatedNotes = separateSparkSources(item.confirmation); return <>
                           <label className="full-field"><span>Action or decision required <em>Required</em></span><small>Enter the concrete action, decision, or deliverable needed. Be specific about what must happen.</small><textarea className="expanding-textarea" value={item.do} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "do", event.target.value)} /></label>
-                          <div className="structured-grid">
+                          <div className="structured-grid spark-plan-flow">
                             <label><span>Owner <em>Required</em></span><small>Type the person or role responsible.</small><input type="search" value={item.owner} onChange={(event) => updateAction(phaseIndex, actionIndex, "owner", event.target.value)} /></label>
-                            <label><span>Target date <em>Required</em></span><small>{item.when && item.when !== NEEDS_INPUT ? `Current guidance: ${item.when}` : "Choose the completion date."}</small><input type="date" value={/^\d{4}-\d{2}-\d{2}$/.test(item.when) ? item.when : ""} onChange={(event) => updateAction(phaseIndex, actionIndex, "when", event.target.value)} /></label>
+                            <label><span>Timing or sequence <em>Required</em></span><small>Use a known project date or an editable sequencing recommendation.</small><input type="text" value={item.when === NEEDS_INPUT ? "" : item.when} placeholder="Example: Before leader and audience preparation" onChange={(event) => updateAction(phaseIndex, actionIndex, "when", event.target.value)} /></label>
+                            <label className="wide-field"><span>Why this matters <em>Required</em></span><small>Explain why this planning step is necessary.</small><textarea className="expanding-textarea" value={item.why} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "why", event.target.value)} /></label>
+                            <label className="wide-field"><span>Done when <em>Required</em></span><small>Describe the observable completion condition.</small><textarea className="expanding-textarea" value={item.doneWhen} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "doneWhen", event.target.value)} /></label>
                             <label><span>Status <em>Required</em></span><select value={STATUS_OPTIONS.includes(item.status) ? item.status : "Not started"} onChange={(event) => updateAction(phaseIndex, actionIndex, "status", event.target.value)}>{STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
-                            <label className="wide-field"><span>Notes or dependencies <i>Optional</i></span><small>Record decisions, blockers, or work that must happen first.</small><textarea className="expanding-textarea" value={item.confirmation} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "confirmation", event.target.value)} /></label>
+                            <label className="wide-field"><span>Notes or dependencies <i>Optional</i></span><small>Record useful planning decisions, blockers, or work that must happen first. References entered here move to Sources / References.</small><textarea className="expanding-textarea" value={separatedNotes.content} onInput={growTextArea} onChange={(event) => updateSparkNotes(phaseIndex, actionIndex, event.target.value)} /></label>
+                            <label className="wide-field"><span>Sources / References <i>Reference</i></span><small>Keep URLs, citations, document names, evidence labels, and source references here.</small><textarea className="expanding-textarea" value={item.details?.sources || separatedNotes.references} onInput={growTextArea} onChange={(event) => updateActionDetail(phaseIndex, actionIndex, "sources", event.target.value)} /></label>
                           </div>
+                          </>; })()}
                         </> : <>
                           <div className={`structured-grid ${isLeaderEntry ? "leader-manager-flow" : isAudienceEntry ? "audience-preparation-flow" : ""}`}>
                             {(isLeaderEntry ? [

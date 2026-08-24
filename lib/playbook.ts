@@ -75,6 +75,21 @@ const referenceText = (...values: string[]) => {
   ]).filter(Boolean);
   return [...new Set(references)].join("\n");
 };
+const sparkSourceLine = /^\s*(?:sources?|references?|links?|urls?|documents?|citations?|evidence)\s*:/i;
+export function separateSparkSources(text: string) {
+  const references = [
+    ...(text.match(urlPattern) ?? []),
+    ...text.split(/\r?\n/).filter((line) => sparkSourceLine.test(line)).map((line) => line.replace(sparkSourceLine, "").trim()),
+  ].filter(Boolean);
+  const content = text
+    .split(/\r?\n/)
+    .filter((line) => !sparkSourceLine.test(line))
+    .join("\n")
+    .replace(urlPattern, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  return { content, references: [...new Set(references)].join("\n") };
+}
 export function collectPrepareContext(intake: Intake, assessment: Assessment, inputs: PrepareGenerationInputs = {}) {
   const sourceDocumentText = inputs.sourceDocumentText?.trim() ?? "";
   const evidencePack = inputs.evidencePack?.trim() || intake.externalEvidence?.trim() || "";
@@ -170,14 +185,36 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generation
   const prepareReferences = capturedReferences || (value(intake.externalSources) === NEEDS_INPUT ? source : value(intake.externalSources));
   const riskGuidance = assessment.risks.length ? `\n\nPlanning considerations: ${assessment.risks.join("; ")}.` : "";
   const readinessGuidance = readiness !== NEEDS_INPUT ? `\n\nCurrent readiness evidence: ${cleanMessageText(readiness)}` : "";
-  const audienceRows = audiences.map((audience) => ({
-    audience, effect: NEEDS_INPUT, impact: NEEDS_INPUT, know: change, feel: NEEDS_INPUT,
-    do: NEEDS_INPUT, concerns: NEEDS_INPUT, support: NEEDS_INPUT,
-  }));
+  const sparkChange = separateSparkSources(change).content || "Suggested example — confirm: Summarize the change in one clear sentence.";
+  const sparkOutcome = separateSparkSources(outcome).content || "Suggested example — confirm: Explain the outcome this change is intended to improve.";
+  const sparkTiming = timing !== NEEDS_INPUT ? separateSparkSources(timing).content : "Suggested — confirm: Work backward from the planned launch or milestone.";
+  const sparkAudiences = audiences[0] === NEEDS_INPUT ? ["Affected Employees or Teams — confirm"] : audiences;
+  const sparkReferences = [prepareReferences, separateSparkSources(prepareContext.signalText).references].filter(Boolean).join("\n");
+  const sparkImpact = isLarge ? "High" : isSmall ? "Low" : "Medium";
+  const sparkImpactType = /tool|system|platform|software|migration| ai |automation/.test(` ${text} `) ? "Technology" : /policy|compliance/.test(text) ? "Policy" : /role|staffing|organization/.test(text) ? "Role" : /workflow|process|procedure|handoff/.test(text) ? "Process" : "Behavior";
+  const audienceRows = sparkAudiences.map((audience) => {
+    const isLeaderOrManager = /leader|manager|supervisor|sponsor|executive/i.test(audience);
+    const expectedAction = isLeaderOrManager
+      ? "Explain the change consistently, reinforce the expected action, and route unresolved questions."
+      : trainingNeeded
+        ? "Learn and use the new process or tool, complete recommended practice, and use the support path when help is needed."
+        : "Follow the new expectation and use the support path when help is needed.";
+    return {
+      audience,
+      effect: `${audience} will need to understand ${sparkChange} and adjust how they complete or support the affected work. Confirm the specific local impact with the audience owner.`,
+      impact: sparkImpact,
+      impactType: sparkImpactType,
+      know: `What is changing: ${sparkChange}\n\nWhy it matters: ${sparkOutcome}\n\nExpected timing: ${sparkTiming}`,
+      feel: "Clear about why the change matters, what is expected, and where to get help.",
+      do: expectedAction,
+      concerns: assessment.risks.length ? `Plan for questions related to: ${assessment.risks.join("; ")}.` : "Likely questions may focus on local impact, timing, workload, and available support.",
+      support: trainingNeeded ? "Job Aid, Training" : "FAQ, Team Discussion Guide",
+    };
+  });
   const stakeholderRows = [
-    { stakeholder: NEEDS_INPUT, role: "Accountable sponsor", influence: "High", currentSupport: NEEDS_INPUT, desiredSupport: "Active", need: "Confirm direction and visibly support the change", approach: `${suggested}: sponsor alignment`, owner: NEEDS_INPUT },
-    ...(!isSmall ? [{ stakeholder: NEEDS_INPUT, role: "Operational owner", influence: "High", currentSupport: NEEDS_INPUT, desiredSupport: "Active", need: "Confirm operational readiness", approach: "Readiness review", owner: NEEDS_INPUT }] : []),
-    ...(isLarge || governed ? [{ stakeholder: NEEDS_INPUT, role: "Required reviewer", influence: "High", currentSupport: NEEDS_INPUT, desiredSupport: "Approve or advise", need: "Review sensitive claims and sequencing", approach: "Targeted review", owner: NEEDS_INPUT }] : []),
+    { stakeholder: leadershipAudience, role: "Accountable Sponsor — confirm name", influence: "High", currentSupport: "Unknown", desiredSupport: "Active", need: "Confirm direction, resolve open decisions, and visibly support the change", approach: `${suggested}: Sponsor Alignment`, owner: "Change Owner — confirm name" },
+    ...(!isSmall ? [{ stakeholder: "Operational Owner — confirm name", role: "Operational Owner", influence: "High", currentSupport: "Unknown", desiredSupport: "Active", need: `Confirm operational readiness, audience impact, and support before ${sparkTiming}`, approach: "Readiness Review", owner: "Change Owner — confirm name" }] : []),
+    ...(isLarge || governed ? [{ stakeholder: "Required Reviewer — confirm role and name", role: "Required Reviewer", influence: "High", currentSupport: "Unknown", desiredSupport: "Approve or advise", need: "Review sensitive claims, risks, and sequencing within their established authority", approach: "Targeted Review", owner: "Change Owner — confirm name" }] : []),
   ];
 
   const leaderActions = [
@@ -277,10 +314,10 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generation
 
   return [
     { id: "understand", number: 1, title: "Understand the change", purpose: "Confirm the facts and close the most important gaps before planning activity.", source, instructions: instruction("Build a reliable foundation for the playbook.", "Identify the specific action or decision required to move this change forward.", "Enter it in Action or decision required, then assign the owner, target date, status, and dependencies.", "A concrete action or decision, owner, target date, and status.", "The action is specific, assigned, dated, and any dependency is recorded.", "Confirm the revised routing workflow and approve the October 12 launch decision."), actions: [
-      action("confirm-change", { do: "Confirm the change, reason, outcome, behavior, dates, and constraints", who: "Change owner and accountable leader", use: "Source review", create: "Confirmed change summary", when: "First", why: "Every later action depends on a clear and accurate change story.", doneWhen: "The change owner confirms the summary and marks missing information for follow-up.", confirmation: `Change: ${change}\nWhy: ${outcome}\nExpected behavior: ${NEEDS_INPUT}\nDates: ${timing}\nConstraints: ${sensitivity}` }),
+      action("confirm-change", { do: "Review and confirm the change story, expected behavior, timing, dependencies, and constraints", who: "Change Owner and Accountable Leader", use: "Source Review", create: "Confirmed Change Summary", owner: "Change Owner — confirm name", when: "First, before leader and audience preparation", why: "Every later action depends on a clear and accurate change story.", doneWhen: "The change owner confirms the story, expected behavior, timing, dependencies, and any decisions that still require human judgment.", confirmation: `Expected behavior: Affected audiences understand ${sparkChange} and complete the actions relevant to their role.\nPlanning dependencies: Confirm leader alignment, communication materials, audience support, and the issue-response path before activation.\nTiming: ${sparkTiming}\nConstraints and risks: ${sensitivity !== NEEDS_INPUT ? separateSparkSources(sensitivity).content : assessment.risks.length ? assessment.risks.join("; ") : "Suggested — confirm: Validate operational readiness and unresolved dependencies before activation."}`, details: { sources: sparkReferences } }),
     ], checklist: ["The change and business outcome are clear", "Affected groups are named", "Expected employee behavior is defined", "Important dates and constraints are confirmed", "Missing information has an owner"] },
     { id: "people-involved", number: 2, title: "Identify who needs to be involved", purpose: "Name the affected groups and the people needed to make the change work.", source, instructions: instruction("Make the impact and involvement visible.", "Rate each audience’s impact and identify the stakeholders needed to support the change.", "Use the Audience impact entries and Stakeholder plan directly below.", "Impacted groups, impact rating, type and reason, review decision, stakeholders, and owners.", "Every impacted group has a defined rating and reason; required reviewers and stakeholder owners are identified.", "Customer Care — 3 Moderate — Process and Behavior — new routing steps require manager support."), actions: [], tables: [
-      { id: "audiences", label: "Audience impact entries", columns: [{ key: "audience", label: "Impacted groups", required: true, control: "multi-select", options: audiences }, { key: "impact", label: "Impact level", width: "small", required: true, control: "select", options: IMPACT_OPTIONS, helper: IMPACT_DEFINITIONS.join("\n") }, { key: "impactType", label: "Type of impact", required: true, control: "multi-select", options: IMPACT_TYPES }, { key: "effect", label: "Reason for rating", width: "large", required: true, control: "textarea" }, { key: "know", label: "What they need to know", width: "large", required: true, control: "textarea" }, { key: "feel", label: "What they need to feel", control: "textarea" }, { key: "do", label: "What they need to do", width: "large", required: true, control: "textarea" }, { key: "concerns", label: "Likely concerns", width: "large", control: "textarea" }, { key: "support", label: "Support required", width: "large", control: "multi-select", options: SUPPORT_MATERIALS }, { key: "humanReview", label: "Human review required", required: true, control: "yes-no" }, { key: "reviewer", label: "Reviewer", control: "person", helper: "Required when Human review required is Yes." }, { key: "reviewDate", label: "Review date", control: "date" }, { key: "status", label: "Status", required: true, control: "status" }], rows: audienceRows.map((row) => ({ ...row, impactType: NEEDS_INPUT, humanReview: governed ? "Yes" : "No", reviewer: governed ? NEEDS_INPUT : "Not required", reviewDate: NEEDS_INPUT, status })) },
+      { id: "audiences", label: "Audience impact entries", columns: [{ key: "audience", label: "Impacted groups", required: true, control: "multi-select", options: audiences }, { key: "impact", label: "Impact level", width: "small", required: true, control: "select", options: IMPACT_OPTIONS, helper: IMPACT_DEFINITIONS.join("\n") }, { key: "impactType", label: "Type of impact", required: true, control: "multi-select", options: IMPACT_TYPES }, { key: "effect", label: "Reason for rating", width: "large", required: true, control: "textarea" }, { key: "know", label: "What they need to know", width: "large", required: true, control: "textarea" }, { key: "feel", label: "What they need to feel", control: "textarea" }, { key: "do", label: "What they need to do", width: "large", required: true, control: "textarea" }, { key: "concerns", label: "Likely concerns", width: "large", control: "textarea" }, { key: "support", label: "Support required", width: "large", control: "multi-select", options: SUPPORT_MATERIALS }, { key: "humanReview", label: "Human review required", required: true, control: "yes-no" }, { key: "reviewer", label: "Reviewer", control: "person", helper: "Required when Human review required is Yes." }, { key: "reviewDate", label: "Review date", control: "date" }, { key: "status", label: "Status", required: true, control: "status" }], rows: audienceRows.map((row) => ({ ...row, humanReview: governed ? "Yes" : "No", reviewer: governed ? "Required Reviewer — confirm name" : "Not required", reviewDate: timing !== NEEDS_INPUT ? separateSparkSources(timing).content : "Confirm before activation", status })) },
       { id: "stakeholders", label: "Stakeholder plan", columns: [{ key: "stakeholder", label: "Person or group", required: true, control: "person" }, { key: "role", label: "Role", required: true, control: "text" }, { key: "influence", label: "Influence", required: true, control: "select", options: ["Low", "Medium", "High"] }, { key: "currentSupport", label: "Current support", control: "select", options: ["Unknown", "Resistant", "Neutral", "Supportive", "Active"] }, { key: "desiredSupport", label: "Desired support", required: true, control: "select", options: ["Aware", "Supportive", "Active", "Decision maker"] }, { key: "need", label: "What we need", width: "large", required: true, control: "textarea" }, { key: "approach", label: "Engagement approach", width: "large", required: true, control: "textarea" }, { key: "owner", label: "Owner", required: true, control: "person" }], rows: stakeholderRows },
     ] },
     { id: "leaders", number: 3, title: "Prepare leaders and managers", purpose: "Equip the people who will explain, sponsor, and support the change.", source: "Change Navigation framework + source evidence", instructions: instruction("Give leaders the information and tools to lead consistently.", "Create one preparation entry for each leader or manager audience with different needs.", "Use the stacked Leader or manager preparation entries below; add another entry when needed.", "Audience, knowledge, required action, messages, materials, channel, owner, date, review decision, and status.", "The leader audience has an owner, date, usable messages and materials, and any required review is identified.", "People managers — explain the routing change in a team meeting using talking points and an FAQ."), actions: leaderActions },
@@ -294,6 +331,8 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generation
 
 export function makePlaybook(intake: Intake, assessment: Assessment, generationInputs: PrepareGenerationInputs = {}): PlaybookPhase[] {
   const detailed = makeDetailedPlaybook(intake, assessment, generationInputs);
+  const sparkContext = collectPrepareContext(intake, assessment, generationInputs);
+  const sparkPlanTiming = sparkContext.timing !== NEEDS_INPUT ? separateSparkSources(sparkContext.timing).content : "Suggested — confirm: Work backward from the planned launch or milestone.";
   const byId = (id: string) => detailed.find((phase) => phase.id === id)!;
   const understand = byId("understand");
   const involved = byId("people-involved");
@@ -322,7 +361,7 @@ export function makePlaybook(intake: Intake, assessment: Assessment, generationI
           : column),
     { key: "importantDates", label: "Important dates", required: true, control: "text", helper: "Add the key dates this audience needs to know.", advanced: false, reuse: "dates" },
   ];
-  audienceTable.rows = audienceTable.rows.map((row) => ({ ...row, importantDates: value(intake.timing) }));
+  audienceTable.rows = audienceTable.rows.map((row) => ({ ...row, importantDates: sparkPlanTiming }));
   const stakeholderTable = limitTable(involved.tables![1], ["stakeholder", "role", "need"], { stakeholder: "stakeholders", owner: "owners" });
   stakeholderTable.label = "Key supporters";
   stakeholderTable.columns = stakeholderTable.columns.map((column) => column.key === "role" ? { ...column, label: "Why they matter" } : column);
@@ -497,7 +536,7 @@ export function phaseSummary(phase: PlaybookPhase, phases: PlaybookPhase[] = [ph
   const tables = phase.tables ?? [];
   const needsInput = [...phase.actions.flatMap((item) => Object.values(item).filter((itemValue) => itemValue === NEEDS_INPUT)), ...tables.flatMap((table) => table.rows.flatMap((row) => Object.values(row).filter((itemValue) => itemValue === NEEDS_INPUT)))].length;
   const names = (tableId: string, key: string) => tables.find((table) => table.id === tableId)?.rows.map((row) => row[key]).filter((item) => item && item !== NEEDS_INPUT).slice(0, 3) ?? [];
-  if (phase.id === "spark") return { title: "Your Spark Plan", items: [{ label: "Why we’re changing", values: [phase.actions[0]?.confirmation || phase.actions[0]?.do || NEEDS_INPUT] }, { label: "Priority audiences", values: names("audiences", "audience") }, { label: "Key supporters", values: names("stakeholders", "stakeholder") }], needsInput };
+  if (phase.id === "spark") return { title: "Your Spark Plan", items: [{ label: "Why we’re changing", values: [separateSparkSources(phase.actions[0]?.confirmation || phase.actions[0]?.do || NEEDS_INPUT).content] }, { label: "Priority audiences", values: names("audiences", "audience") }, { label: "Key supporters", values: names("stakeholders", "stakeholder") }], needsInput };
   if (phase.id === "prepare") return { title: "Your Prepare Plan", items: [{ label: "Leader and manager actions", values: phase.actions.map((item) => item.do).slice(0, 3) }, { label: "Planned communications", values: names("communications", "purpose") }, { label: "Materials to create", values: names("deliverables", "deliverable") }], needsInput };
   if (phase.id === "activate") {
     const communications = phases.flatMap((item) => item.tables ?? []).find((table) => table.id === "communications");

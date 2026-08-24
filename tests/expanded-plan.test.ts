@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assessChange, buildConnectorRequest, NEEDS_INPUT, parseEvidencePack, type Intake } from "../lib/changeNavigator.ts";
-import { changeCoachOverview, collectPrepareContext, focusAreaAttention, focusAreaSignature, makePlaybook, nextActions, phaseSummary, reusablePlanValues, serializePlaybook } from "../lib/playbook.ts";
+import { changeCoachOverview, collectPrepareContext, focusAreaAttention, focusAreaSignature, makePlaybook, nextActions, phaseSummary, reusablePlanValues, separateSparkSources, serializePlaybook } from "../lib/playbook.ts";
 
 const intake: Intake = {
   projectName: "Care workflow update",
@@ -190,6 +190,32 @@ test("Activate affected audiences reuse earlier context as full first drafts", (
   assert.ok(activate.actions.every((item) => !/https?:\/\//.test(item.details?.messages ?? "")));
   assert.ok(activate.actions.every((item) => /example\.com\/activation-evidence/.test(item.details?.sources ?? "")));
   assert.ok(activate.actions.some((item) => prepareCommunications.some((row) => row.channel === item.details?.channel)));
+});
+
+test("Spark separates references, prepopulates required work, and remains editable", () => {
+  const linkedIntake: Intake = {
+    ...intake,
+    changeSummary: "Customer Care will use the revised workflow. https://example.com/change",
+    externalSources: "Document: Decision log\nSources: SharePoint project site\nhttps://example.com/decision-log",
+  };
+  const playbook = makePlaybook(linkedIntake, assessChange(linkedIntake), {
+    sourceDocumentText: "Evidence: Pilot feedback summary\nManagers need an escalation path.",
+    evidencePack: "SOURCES:\nhttps://example.com/pilot",
+    connectorRequest: "Review SharePoint and Outlook evidence for the workflow change.",
+  });
+  const spark = playbook.find((phase) => phase.id === "spark")!;
+  const why = spark.actions[0];
+  assert.ok(!/https?:\/\//.test(why.confirmation));
+  assert.ok(/example\.com\/change/.test(why.details?.sources ?? ""));
+  assert.ok(/example\.com\/pilot/.test(why.details?.sources ?? ""));
+  assert.ok(!/https?:\/\//.test(phaseSummary(spark).items[0].values[0]));
+  assert.ok(spark.tables!.find((table) => table.id === "audiences")!.rows.every((row) => row.impact !== NEEDS_INPUT && row.effect !== NEEDS_INPUT && row.know !== NEEDS_INPUT && row.do !== NEEDS_INPUT && row.importantDates !== NEEDS_INPUT));
+  assert.ok(spark.tables!.find((table) => table.id === "stakeholders")!.rows.every((row) => row.stakeholder !== NEEDS_INPUT && row.need !== NEEDS_INPUT));
+  assert.ok(spark.focusAreas!.every((focus) => focusAreaAttention(spark, focus).length === 0));
+  assert.deepEqual(separateSparkSources("Dependency: Complete testing\nDocument: Pilot brief\nhttps://example.com/brief"), {
+    content: "Dependency: Complete testing",
+    references: "https://example.com/brief\nPilot brief",
+  });
 });
 
 test("download mirrors the playbook and includes open decisions", () => {
