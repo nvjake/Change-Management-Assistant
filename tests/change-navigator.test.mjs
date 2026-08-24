@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("prototype implements the required four-phase guided playbook", async () => {
-  const [page, logic] = await Promise.all([
+  const [page, logic, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../lib/playbook.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
   assert.match(page, /\.docx only/);
   assert.match(page, /processed in this browser/);
@@ -28,6 +29,25 @@ test("prototype implements the required four-phase guided playbook", async () =>
   assert.match(page, /Create &amp; Download My Activation Plan/);
   assert.match(page, /Download Communications Brief/);
   assert.match(page, /Download Leader Preparation Brief/);
+  assert.match(page, /Change Coach/);
+  assert.match(page, /Here’s where your change stands/);
+  assert.match(page, /High-impact audiences/);
+  assert.match(page, /Next best action/);
+  assert.match(page, /goToFocus/);
+  assert.match(page, /Leader \/ Manager Preparation/);
+  assert.match(page, /Sources \/ Evidence/);
+  assert.match(page, /Timing or Sequence/);
+  assert.match(page, /leader-manager-flow/);
+  assert.match(page, /Sources \/ Evidence/);
+  assert.match(page, /isLeaderEntry \|\| isAudienceEntry \|\| editingActionId === item\.id/);
+  assert.match(page, /sourceDocumentText: sourceText/);
+  assert.match(styles, /\[data-phase-id="prepare"\] > \.action-list \{ display: grid; grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(styles, /\.action-list > \.leader-manager-card,[\s\S]*\.action-list > \.add-entry \{ grid-column: 1 \/ -1; width: 100%/);
+  assert.match(page, /Affected Audience Preparation — Entry/);
+  assert.match(page, /audience-preparation-flow/);
+  assert.match(page, /\+ Add another.*affected audience/);
+  assert.match(styles, /\[data-phase-id="activate"\] > \.action-list \{ display: grid; grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(styles, /\.action-list > \.audience-preparation-card,[\s\S]*\.action-list > \.add-entry \{ grid-column: 1 \/ -1; width: 100%/);
 });
 
 test("governance and writing guardrails are visible in the implementation", async () => {

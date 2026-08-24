@@ -12,6 +12,7 @@ import {
   parseEvidencePack,
 } from "../lib/changeNavigator";
 import {
+  changeCoachOverview,
   makePlaybook,
   nextActions,
   DownloadKind,
@@ -96,6 +97,7 @@ export default function Home() {
   const currentSummary = useMemo(() => currentPhase ? phaseSummary(currentPhase, plan) : null, [currentPhase, plan]);
   const currentAttention = useMemo(() => currentPhase ? phaseAttentionItems(currentPhase, confirmedSections) : [], [currentPhase, confirmedSections]);
   const currentConfirmedCount = currentPhase?.focusAreas?.filter((focus) => confirmedSections[`${currentPhase.id}:${focus.id}`] === focusAreaSignature(currentPhase, focus)).length ?? 0;
+  const coachOverview = useMemo(() => changeCoachOverview(plan, confirmedSections), [plan, confirmedSections]);
 
   const update = (field: keyof Intake, value: string) =>
     setIntake((current) => ({ ...current, [field]: value }));
@@ -167,7 +169,13 @@ export default function Home() {
   };
 
   const generate = () => {
-    const generated = makePlaybook(intake, assessment);
+    const generated = makePlaybook(intake, assessment, {
+      sourceDocumentText: sourceText,
+      connectorRequest,
+      evidencePack,
+      connectorSources,
+      searchGuidance,
+    });
     setPlan(generated);
     setCurrentPhaseIndex(0);
     setEditingActionId(generated[0]?.actions[0]?.id ?? "");
@@ -198,6 +206,44 @@ export default function Home() {
     setPlan((current) => current.map((phase, currentPhaseIndex) => {
       if (currentPhaseIndex !== phaseIndex || !phase.actions.length) return phase;
       const template = phase.actions[phase.actions.length - 1];
+      if (template.details?.leaderDo) return { ...phase, actions: [...phase.actions, {
+        ...template,
+        id: `${phase.id}-${Date.now()}`,
+        do: "Prepare an additional leader or manager audience to explain and support the change",
+        who: "Additional Leader or Manager Audience — confirm",
+        owner: "Change Owner — confirm name",
+        status: "Not started",
+        confirmation: "Confirm what this audience must decide, explain, or reinforce.",
+        humanReview: "No — confirm before use",
+        completed: false,
+        details: {
+          ...template.details,
+          audience: "Additional Leader or Manager Audience — confirm",
+          leaderDo: "Review the proposed change, confirm the local impact, explain the expected action, and route unresolved questions.",
+          why: "This audience needs enough context and preparation to communicate consistently and support affected employees.",
+          doneWhen: "The audience can explain the change, expected action, timing, and support path without unresolved questions.",
+          notes: "Suggested example — confirm: Identify any audience-specific decision, concern, or escalation path.",
+        },
+      }] };
+      if (template.details?.audienceDo) return { ...phase, actions: [...phase.actions, {
+        ...template,
+        id: `${phase.id}-${Date.now()}`,
+        do: "Prepare an additional affected audience to understand and act on the change",
+        who: "Additional Affected Audience — confirm",
+        owner: "Change Owner or Audience Owner — confirm name",
+        status: "Not started",
+        confirmation: "Confirm the local impact, support contact, and unresolved questions before launch.",
+        humanReview: "No — confirm before use",
+        completed: false,
+        details: {
+          ...template.details,
+          audience: "Additional Affected Audience — confirm",
+          changing: "Suggested example — confirm: Explain how this audience’s work, behavior, process, or support needs will change.",
+          audienceDo: "Review the change, complete the expected action, and use the named support path when help is needed.",
+          doneWhen: "The audience can explain what is changing, complete the expected action, and identify where to get help.",
+          feedback: "Confirm the support contact and route for questions before launch.",
+        },
+      }] };
       return { ...phase, actions: [...phase.actions, {
         ...template,
         id: `${phase.id}-${Date.now()}`,
@@ -311,6 +357,14 @@ export default function Home() {
       <div><span className="review-status">{confirmed ? "Confirmed" : missing.length ? "Needs attention" : "Needs review"}</span><p>{confirmed ? "This section is confirmed. Editing its information will return it to Needs review." : missing.length ? `${missing.length} required item${missing.length === 1 ? "" : "s"} need attention before confirmation.` : "Review the recommendation, make any edits, then confirm this section."}</p></div>
       <button className={confirmed ? "edit-entry" : "primary compact"} disabled={!confirmed && missing.length > 0} onClick={() => setFocusConfirmed(phase, focus, !confirmed)}>{confirmed ? "Edit this section" : "Confirm this section"}</button>
     </div>;
+  };
+
+  const goToFocus = (phaseId: string, focusId: string) => {
+    const phaseIndex = plan.findIndex((phase) => phase.id === phaseId);
+    if (phaseIndex < 0) return;
+    setCurrentPhaseIndex(phaseIndex);
+    setEditingActionId(plan[phaseIndex].actions[0]?.id ?? "");
+    window.setTimeout(() => document.getElementById(`focus-${phaseId}-${focusId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
 
   return (
@@ -439,6 +493,15 @@ export default function Home() {
             <div><span className="kicker">Step 3</span><h2>Your change activation playbook</h2><p>Start with the next three actions, then follow the phases in order. Every recommendation remains editable.</p></div>
             <div className="actions"><button className="secondary" onClick={() => download("full")}>Download full plan</button><button className="primary compact" onClick={generate}>Refresh playbook</button></div>
           </div>
+          <section className="coach-overview" aria-labelledby="coach-overview-title">
+            <div className="coach-heading"><div><span className="kicker">Change Coach</span><h3 id="coach-overview-title">Here’s where your change stands</h3><p>A quick view of what is ready, what needs attention, and what to do next.</p></div><div className="coach-readiness"><strong>{coachOverview.readinessPercent}% ready</strong><span>{coachOverview.confirmedSections} of {coachOverview.totalSections} sections confirmed</span><div className="readiness-track" aria-label={`${coachOverview.readinessPercent}% ready`}><span style={{ width: `${coachOverview.readinessPercent}%` }} /></div></div></div>
+            <div className="coach-phase-list" aria-label="Phase progress">{coachOverview.phaseProgress.map((phase) => <button key={phase.id} className={`coach-phase coach-${phase.color} ${phase.status === "Confirmed" ? "confirmed" : phase.status === "Needs attention" ? "attention" : "review"}`} onClick={() => goToFocus(phase.id, plan.find((item) => item.id === phase.id)?.focusAreas?.[0]?.id ?? "why")}><span>{phase.icon}</span><b>{phase.title}</b><small>{phase.confirmed}/{phase.total} confirmed · {phase.status}</small></button>)}</div>
+            <div className="coach-cards">
+              <article className={`coach-card ${coachOverview.topAttention ? "attention" : "complete"}`}><span className="coach-label">Top attention item</span>{coachOverview.topAttention ? <><h4>{coachOverview.topAttention.label}</h4><p>This is the first incomplete item in phase order.</p><button className="text-button" onClick={() => goToFocus(coachOverview.topAttention?.phaseId ?? "spark", coachOverview.topAttention?.focusId ?? "why")}>Go to {coachOverview.topAttention.phaseTitle} →</button></> : <><h4>No open attention items</h4><p>All focus areas are confirmed.</p></>}</article>
+              <article className="coach-card"><span className="coach-label">High-impact audiences</span>{coachOverview.highImpactAudiences.length ? <ul>{coachOverview.highImpactAudiences.slice(0, 3).map((audience) => <li key={audience}>{audience}</li>)}</ul> : <><h4>None confirmed yet</h4><p>Audiences rated High in Spark will appear here.</p></>}</article>
+              <article className="coach-card next-action"><span className="coach-label">Next best action</span>{coachOverview.nextBestAction ? <><h4>Next: {coachOverview.nextBestAction.label}</h4><p>This comes from your existing next-three-actions list.</p><button className="text-button" onClick={() => goToFocus(coachOverview.nextBestAction?.phaseId ?? "spark", coachOverview.nextBestAction?.focusId ?? "why")}>Take me there →</button></> : <><h4>Your action list is complete</h4><p>Review any remaining section confirmations.</p></>}</article>
+            </div>
+          </section>
           <section className="start-here" aria-labelledby="start-here-title">
             <div><span className="kicker">Start here</span><h3 id="start-here-title">Your next 3 actions</h3></div>
             <ol>
@@ -470,11 +533,11 @@ export default function Home() {
                       const isLeaderEntry = Boolean(item.details?.leaderDo);
                       const isAudienceEntry = Boolean(item.details?.audienceDo);
                       const isStructuredEntry = isLeaderEntry || isAudienceEntry;
-                      const isEditing = editingActionId === item.id;
+                      const isEditing = isLeaderEntry || isAudienceEntry || editingActionId === item.id;
                       return (
-                      <section className={`action-card guided-entry ${item.completed ? "action-complete" : ""}`} key={item.id}>
-                        <div className="action-top"><label className="complete-control"><input type="checkbox" checked={item.completed} onChange={(event) => updateAction(phaseIndex, actionIndex, "completed", event.target.checked)} /><span>{item.completed ? "Complete" : "Mark complete"}</span></label>{isStructuredEntry && phase.actions.length > 1 && <button className="remove-row" onClick={() => removePhaseAction(phaseIndex, actionIndex)}>Remove entry</button>}</div>
-                        {!isEditing ? <div className="action-preview"><div><b>Do</b><p>{item.do}</p></div><div><b>Who</b><p>{item.details?.audience || item.owner || item.who}</p></div><div><b>When</b><p>{item.when}</p></div><div><b>Done when</b><p>{item.confirmation || item.doneWhen}</p></div><button className="edit-entry" onClick={() => setEditingActionId(item.id)}>Review or edit</button></div> : <>
+                      <section className={`action-card guided-entry ${isLeaderEntry ? "leader-manager-card" : isAudienceEntry ? "audience-preparation-card" : ""} ${item.completed ? "action-complete" : ""}`} key={item.id}>
+                        <div className="action-top">{isLeaderEntry && isEditing ? <div className="leader-entry-heading"><strong>Leader / Manager Preparation</strong><small>Review this recommendation from top to bottom, then mark it complete.</small></div> : isAudienceEntry && isEditing ? <div className="audience-entry-heading"><strong>Affected Audience Preparation — Entry {actionIndex + 1}</strong><small>Review this first draft from top to bottom, then mark the audience preparation complete.</small></div> : <label className="complete-control"><input type="checkbox" checked={item.completed} onChange={(event) => updateAction(phaseIndex, actionIndex, "completed", event.target.checked)} /><span>{item.completed ? "Complete" : "Mark complete"}</span></label>}{isStructuredEntry && phase.actions.length > 1 && <button className="remove-row" onClick={() => removePhaseAction(phaseIndex, actionIndex)}>Remove entry</button>}</div>
+                        {!isEditing ? <div className={`action-preview ${isLeaderEntry ? "leader-manager-preview" : ""}`}><div><b>{isLeaderEntry ? "What they need to do" : "Do"}</b><p>{item.do}</p></div><div><b>Audience</b><p>{item.details?.audience || item.owner || item.who}</p></div><div><b>{isLeaderEntry ? "Timing or sequence" : "When"}</b><p>{item.when}</p></div><div><b>Done when</b><p>{item.confirmation || item.doneWhen}</p></div><button className="edit-entry" onClick={() => setEditingActionId(item.id)}>Review or edit</button></div> : <>
                         {item.id === "confirm-change" ? <>
                           <label className="full-field"><span>Action or decision required <em>Required</em></span><small>Enter the concrete action, decision, or deliverable needed. Be specific about what must happen.</small><textarea className="expanding-textarea" value={item.do} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "do", event.target.value)} /></label>
                           <div className="structured-grid">
@@ -484,29 +547,32 @@ export default function Home() {
                             <label className="wide-field"><span>Notes or dependencies <i>Optional</i></span><small>Record decisions, blockers, or work that must happen first.</small><textarea className="expanding-textarea" value={item.confirmation} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "confirmation", event.target.value)} /></label>
                           </div>
                         </> : <>
-                          <div className="structured-grid">
+                          <div className={`structured-grid ${isLeaderEntry ? "leader-manager-flow" : isAudienceEntry ? "audience-preparation-flow" : ""}`}>
                             {(isLeaderEntry ? [
-                              ["audience", "Leader or manager audience", "Search or enter the leader groups that need the same preparation.", "person"], ["know", "What leaders need to know", "Include the change, reason, boundaries, and known impact.", "textarea"], ["leaderDo", "What leaders need to do", "State the visible action or decision expected from leaders.", "textarea"], ["messages", "Talking points or key messages", "Use plain language leaders can say directly.", "textarea"], ["materials", "Support materials needed", "Choose or enter the materials leaders need.", "multi"], ["channel", "Communication channel", "Choose how leaders will be prepared.", "multi"],
+                              ["audience", "Leader / Manager Audience", "Review or enter the leader groups that need the same preparation.", "person"], ["know", "What They Need to Know", "Use the suggested change, reason, timing, risks, and readiness context; edit where needed.", "textarea"], ["leaderDo", "What They Need to Do", "Confirm the visible action, decision, or team support expected from this audience.", "textarea"], ["why", "Why It Matters", "Review the inferred reason this audience needs to be prepared.", "textarea"], ["messages", "Key Message or Talking Points", "Keep only language intended for this audience here. Put links and documents in Sources / Evidence.", "textarea"], ["channel", "Recommended Communication Approach", "Review the suggested channel and adjust it for this audience.", "multi"], ["materials", "Preparation Materials", "Review or select the materials leaders need.", "multi"],
                             ] : [
-                              ["audience", "Affected audience", "Search or enter groups with the same preparation needs.", "person"], ["changing", "What is changing", "Describe the specific change for this audience.", "textarea"], ["know", "What the audience needs to know", "Include the reason, impact, and key boundaries.", "textarea"], ["audienceDo", "What the audience needs to do", "State the behavior or task expected.", "textarea"], ["support", "Training or support required", "Choose or enter only the support this audience needs.", "multi"], ["channel", "Communication channel", "Choose how this audience should receive the information.", "multi"],
+                              ["audience", "Affected Audience", "Review or enter the group with the same activation and support needs.", "person"], ["changing", "How They Are Affected", "Review the inferred impact and confirm the specific local effect.", "textarea"], ["know", "What They Need to Know", "Use the suggested change, reason, timing, risks, and readiness context; edit where needed.", "textarea"], ["audienceDo", "What They Need to Do", "Confirm the expected behavior, task, or support action.", "textarea"], ["messages", "Key Message / Talking Points", "Keep only audience-facing communication here. Put links and references in Sources / Evidence.", "textarea"], ["channel", "Recommended Communication or Engagement Approach", "Review the approach carried forward from the communication sequence.", "multi"], ["support", "Support / Resources Needed", "Review or select the materials, practice, or support this audience needs.", "multi"],
                             ]).map(([key, label, helper, control]) => {
                               const detailValue = item.details?.[key] ?? "";
-                              const multiOptions = key === "channel" ? ["Leader meeting", "Manager cascade", "Team meeting", "Email", "Slack", "FAQ", "Job aid", "Training", "Office hours", "Intranet or internal page", "Other"] : ["Leader brief", "Manager talking points", "FAQ", "Team discussion guide", "Job aid", "Training", "Reminder message", "Feedback survey", "Office hours", "Other"];
+                              const multiOptions = key === "channel" ? ["Leader Meeting", "Manager Briefing", "Team Meeting", "Email", "Slack", "FAQ", "Job Aid", "Training", "Office Hours", "Intranet or Internal Page", "Other"] : ["Leader Brief", "Manager Talking Points", "FAQ", "Team Discussion Guide", "Job Aid", "Training", "Reminder Message", "Feedback Survey", "Office Hours", "Other"];
                               const listId = `action-audiences-${phaseIndex}-${actionIndex}`;
                               return <label className={control === "textarea" ? "wide-field" : ""} key={key}><span>{label} <em>Required</em></span><small>{helper}</small>{control === "textarea" ? <textarea className="expanding-textarea" value={detailValue} onInput={growTextArea} onChange={(event) => updateActionDetail(phaseIndex, actionIndex, key, event.target.value)} /> : control === "multi" ? <select multiple value={detailValue === NEEDS_INPUT ? [] : detailValue.split(",").map((entry) => entry.trim())} onChange={(event) => updateActionDetail(phaseIndex, actionIndex, key, Array.from(event.currentTarget.selectedOptions).map((option) => option.value).join(", "))}>{[...new Set([...multiOptions, ...detailValue.split(",").map((entry) => entry.trim()).filter((entry) => entry && entry !== NEEDS_INPUT)])].map((option) => <option key={option}>{option}</option>)}</select> : <><input type="search" list={key === "audience" && sharedValues.audiences.length ? listId : undefined} value={detailValue} onChange={(event) => updateActionDetail(phaseIndex, actionIndex, key, event.target.value)} />{key === "audience" && sharedValues.audiences.length > 0 && <datalist id={listId}>{sharedValues.audiences.map((option) => <option key={option} value={option} />)}</datalist>}</>}</label>;
                             })}
                             <label><span>Owner <em>Required</em></span><small>Type the responsible person or role.</small><input type="search" value={item.owner} onChange={(event) => updateAction(phaseIndex, actionIndex, "owner", event.target.value)} /></label>
-                            <label><span>{isAudienceEntry ? "Delivery or completion date" : "When"} <em>Required</em></span><small>{item.when !== NEEDS_INPUT ? `Current guidance: ${item.when}` : "Choose a date."}</small><input type="date" value={/^\d{4}-\d{2}-\d{2}$/.test(item.when) ? item.when : ""} onChange={(event) => updateAction(phaseIndex, actionIndex, "when", event.target.value)} /></label>
+                            <label><span>{isLeaderEntry || isAudienceEntry ? "Timing or Sequence" : "When"} <em>Required</em></span><small>{item.when !== NEEDS_INPUT ? `Current guidance: ${item.when}` : isLeaderEntry ? "Example: Before the manager briefing or two weeks before launch." : isAudienceEntry ? "Example: After the manager briefing and before launch." : "Choose a date."}</small>{isLeaderEntry || isAudienceEntry ? <input type="text" value={item.when === NEEDS_INPUT ? "" : item.when} placeholder={isAudienceEntry ? "Example: After the manager briefing and before launch" : "Example: Before the manager briefing"} onChange={(event) => updateAction(phaseIndex, actionIndex, "when", event.target.value)} /> : <input type="date" value={/^\d{4}-\d{2}-\d{2}$/.test(item.when) ? item.when : ""} onChange={(event) => updateAction(phaseIndex, actionIndex, "when", event.target.value)} />}</label>
+                            {(isLeaderEntry || isAudienceEntry) && <label className="wide-field"><span>Done When <em>Required</em></span><small>Use this observable completion check to decide whether the audience is prepared.</small><textarea className="expanding-textarea" value={item.doneWhen} onInput={growTextArea} onChange={(event) => updateAction(phaseIndex, actionIndex, "doneWhen", event.target.value)} /></label>}
+                            {(isLeaderEntry || isAudienceEntry) && <label className="wide-field"><span>Sources / Evidence <i>Reference</i></span><small>Supporting links, documents, and evidence stay here—not in the Key Message or Talking Points.</small><textarea className="expanding-textarea" value={item.details?.sources ?? ""} onInput={growTextArea} onChange={(event) => updateActionDetail(phaseIndex, actionIndex, "sources", event.target.value)} /></label>}
                             <label><span>Human review required <em>Required</em></span><select value={item.humanReview.startsWith("Yes") ? "Yes" : "No"} onChange={(event) => updateAction(phaseIndex, actionIndex, "humanReview", event.target.value)}><option>Yes</option><option>No</option></select></label>
                             <label><span>Status <em>Required</em></span><select value={STATUS_OPTIONS.includes(item.status) ? item.status : "Not started"} onChange={(event) => updateAction(phaseIndex, actionIndex, "status", event.target.value)}>{STATUS_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
                             <label className="wide-field"><span>{isAudienceEntry ? "Feedback or questions" : "Notes or dependencies"} <i>Optional</i></span><textarea className="expanding-textarea" value={isAudienceEntry ? item.details?.feedback ?? "" : item.details?.notes ?? ""} onInput={growTextArea} onChange={(event) => updateActionDetail(phaseIndex, actionIndex, isAudienceEntry ? "feedback" : "notes", event.target.value)} /></label>
                           </div>
                         </>}
-                        <button className="edit-entry done-editing" onClick={() => setEditingActionId("")}>Done editing</button>
+                        {(isLeaderEntry || isAudienceEntry) && <label className="complete-control complete-bottom"><input type="checkbox" checked={item.completed} onChange={(event) => updateAction(phaseIndex, actionIndex, "completed", event.target.checked)} /><span>{item.completed ? "Complete" : "Mark complete"}</span></label>}
+                        {!isStructuredEntry && <button className="edit-entry done-editing" onClick={() => setEditingActionId("")}>Done editing</button>}
                         </>}
                       </section>
                     )})}
-                    {(phase.actions.some((item) => item.details?.leaderDo || item.details?.audienceDo) || phase.id === "sustain") && phase.actions.length > 0 && <button className="add-entry" onClick={() => addPhaseAction(phaseIndex)}>+ Add another {phase.actions.some((item) => item.details?.leaderDo) ? "leader or manager" : phase.actions.some((item) => item.details?.audienceDo) ? "audience" : "reinforcement action"}</button>}
+                    {(phase.actions.some((item) => item.details?.leaderDo || item.details?.audienceDo) || phase.id === "sustain") && phase.actions.length > 0 && <button className="add-entry" onClick={() => addPhaseAction(phaseIndex)}>+ Add another {phase.actions.some((item) => item.details?.leaderDo) ? "leader or manager" : phase.actions.some((item) => item.details?.audienceDo) ? "affected audience" : "reinforcement action"}</button>}
                   </div>
                   <div className="section-review-list">{(phase.focusAreas ?? []).filter((focus) => focus.actionIds?.length).map((focus) => <div key={focus.id}>{reviewControl(phase, focus)}</div>)}</div>
                   {(phase.tables ?? []).map((table, tableIndex) => {

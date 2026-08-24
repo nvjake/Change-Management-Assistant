@@ -54,9 +54,58 @@ export type PlaybookPhase = {
   focusAreas?: Array<{ id: string; title: string; description: string; usage?: string; actionIds?: string[]; tableIds?: string[] }>;
 };
 
+export type PrepareGenerationInputs = {
+  sourceDocumentText?: string;
+  connectorRequest?: string;
+  evidencePack?: string;
+  connectorSources?: string[];
+  searchGuidance?: string;
+};
+
 const suggested = "Suggested — confirm with Communications";
 const value = (text?: string) => text?.trim() || NEEDS_INPUT;
 const list = (text: string) => [...new Set(text.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean))];
+const sourceLine = /^\s*(?:sources?|references?|links?|urls?)\s*:/i;
+const urlPattern = /https?:\/\/[^\s)\]}]+/gi;
+const cleanMessageText = (text: string) => text.split(/\r?\n/).filter((line) => !sourceLine.test(line)).join("\n").replace(urlPattern, "").replace(/[ \t]{2,}/g, " ").trim();
+const referenceText = (...values: string[]) => {
+  const references = values.flatMap((entry) => [
+    ...(entry.match(urlPattern) ?? []),
+    ...entry.split(/\r?\n/).filter((line) => sourceLine.test(line)).map((line) => line.replace(sourceLine, "").trim()),
+  ]).filter(Boolean);
+  return [...new Set(references)].join("\n");
+};
+export function collectPrepareContext(intake: Intake, assessment: Assessment, inputs: PrepareGenerationInputs = {}) {
+  const sourceDocumentText = inputs.sourceDocumentText?.trim() ?? "";
+  const evidencePack = inputs.evidencePack?.trim() || intake.externalEvidence?.trim() || "";
+  const connectorRequest = inputs.connectorRequest?.trim() ?? "";
+  const connectorSources = inputs.connectorSources?.filter(Boolean) ?? [];
+  const searchGuidance = inputs.searchGuidance?.trim() ?? "";
+  const signalText = [
+    intake.projectName, intake.changeSummary, intake.outcome, intake.audiences, intake.timing,
+    intake.readiness, intake.sensitivities, intake.externalEvidence, intake.externalSources,
+    sourceDocumentText, evidencePack, connectorRequest, connectorSources.join(", "), searchGuidance,
+    assessment.primaryType, assessment.secondaryType, assessment.size, assessment.risks.join("; "),
+    assessment.humanReview.join("; "),
+  ].filter(Boolean).join("\n");
+  return {
+    projectName: value(intake.projectName),
+    changeSummary: value(intake.changeSummary),
+    outcome: value(intake.outcome),
+    audiences: list(intake.audiences),
+    timing: value(intake.timing),
+    readiness: value(intake.readiness),
+    sensitivities: value(intake.sensitivities),
+    assessment,
+    sourceDocumentText,
+    evidencePack,
+    connectorRequest,
+    connectorSources,
+    searchGuidance,
+    sourceReferences: referenceText(intake.changeSummary, intake.outcome, intake.externalSources ?? "", sourceDocumentText, evidencePack),
+    signalText,
+  };
+}
 const status = "Not started";
 export const STATUS_OPTIONS = ["Not started", "In progress", "On hold", "Complete"];
 export const IMPACT_OPTIONS = [
@@ -94,22 +143,33 @@ function action(id: string, fields: Partial<PlaybookAction> & Pick<PlaybookActio
   };
 }
 
-function makeDetailedPlaybook(intake: Intake, assessment: Assessment): PlaybookPhase[] {
+function makeDetailedPlaybook(intake: Intake, assessment: Assessment, generationInputs: PrepareGenerationInputs = {}): PlaybookPhase[] {
+  const prepareContext = collectPrepareContext(intake, assessment, generationInputs);
   const audiences = list(intake.audiences).length ? list(intake.audiences) : [NEEDS_INPUT];
   const change = value(intake.changeSummary);
   const outcome = value(intake.outcome);
   const timing = value(intake.timing);
   const readiness = value(intake.readiness);
   const sensitivity = value(intake.sensitivities);
-  const text = Object.values(intake).join(" ").toLowerCase();
+  const text = prepareContext.signalText.toLowerCase();
   const isSmall = assessment.size === "XS" || assessment.size === "S";
   const isLarge = assessment.size === "L" || assessment.size === "XL";
   const managerImpact = /manager|leader|supervisor/.test(text);
   const trainingNeeded = /training|learn|skill|workflow|system|tool|platform|process|procedure|migration/.test(text) && assessment.size !== "XS";
   const governed = /legal|privacy|compliance|external|media|customer-facing|customer facing| ai |artificial intelligence|staffing|headcount|job security/.test(` ${text} `);
-  const source = intake.externalEvidence
+  const source = prepareContext.evidencePack
     ? "Uploaded document + user-reviewed connected-source evidence"
     : "Uploaded document";
+  const prepareChange = cleanMessageText(change) || "Suggested example — confirm: Describe the change in one clear sentence.";
+  const prepareOutcome = cleanMessageText(outcome) || "Suggested example — confirm: Explain the business or employee outcome this change is intended to improve.";
+  const prepareTiming = timing !== NEEDS_INPUT ? timing : "Suggested — confirm: Work backward from the planned launch or milestone once it is confirmed.";
+  const prepareAudiences = audiences[0] === NEEDS_INPUT ? ["Affected Employees or Teams — confirm"] : audiences;
+  const leadershipAudience = prepareAudiences.find((audience) => /leader|sponsor|executive/i.test(audience)) || (/leader|sponsor|executive/.test(text) ? "Project Leaders and Sponsors" : "Accountable Leader");
+  const managerAudience = prepareAudiences.find((audience) => /manager|supervisor/i.test(audience)) || "People Managers";
+  const capturedReferences = prepareContext.sourceReferences;
+  const prepareReferences = capturedReferences || (value(intake.externalSources) === NEEDS_INPUT ? source : value(intake.externalSources));
+  const riskGuidance = assessment.risks.length ? `\n\nPlanning considerations: ${assessment.risks.join("; ")}.` : "";
+  const readinessGuidance = readiness !== NEEDS_INPUT ? `\n\nCurrent readiness evidence: ${cleanMessageText(readiness)}` : "";
   const audienceRows = audiences.map((audience) => ({
     audience, effect: NEEDS_INPUT, impact: NEEDS_INPUT, know: change, feel: NEEDS_INPUT,
     do: NEEDS_INPUT, concerns: NEEDS_INPUT, support: NEEDS_INPUT,
@@ -121,54 +181,92 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment): PlaybookP
   ];
 
   const leaderActions = [
-    action("align-leaders", { do: "Align the accountable leader on the change, outcome, and risks", who: "Accountable leader", use: "Leader alignment meeting", create: "Leader brief", when: `Before the first communication; target window: ${timing}`, why: "Leaders need one clear story before others hear about the change.", doneWhen: "The leader confirms the change, boundaries, and decisions still open." }),
-    action("confirm-sender", { do: "Confirm who will introduce the change", who: audiences.join(", "), use: `${suggested}: leader-led message`, create: "Named sender and channel decision", when: "Before communication materials are finalized", why: "The right sender builds trust and makes accountability clear.", doneWhen: "The sender accepts the role and the channel is confirmed." }),
+    action("align-leaders", { do: "Align on the change story, intended outcome, risks, and decisions still open", who: leadershipAudience, use: "Leader Alignment Meeting", create: "Leader Brief", owner: "Change Owner — confirm name", when: `Before broader communication; work backward from ${prepareTiming}`, why: `Leaders need a shared explanation of why the change matters before others hear about it. ${prepareOutcome}`, doneWhen: "The accountable leader confirms the change story, intended outcome, boundaries, risks, and open decisions.", confirmation: "Confirm the decisions leaders must make and any risks they need to address." }),
+    action("confirm-sender", { do: "Confirm the visible sponsor, sender, and leadership handoff for the change", who: leadershipAudience, use: `${suggested}: Leader-Led Message`, create: "Named Sender and Channel Decision", owner: "Communications Owner — confirm name", when: `After leadership alignment and before materials are finalized; work backward from ${prepareTiming}`, why: "A visible and credible sender builds trust and makes accountability clear.", doneWhen: "The sponsor or sender accepts the role, the channel is confirmed, and the handoff to managers or employees is clear.", confirmation: "Confirm the sender, channel, and handoff to the next communication." }),
     ...(!isSmall || managerImpact ? [
-      action("manager-brief", { do: "Prepare managers before they speak with their teams", who: "People managers", use: `${suggested}: manager briefing`, create: "Manager talking points and team discussion guide", when: "Before the manager cascade", why: "Managers need answers and a safe way to raise concerns.", doneWhen: "Managers have the talking points, discussion questions, and escalation path." }),
-      action("feedback-path", { do: "Set a feedback and escalation path", who: "Managers and affected teams", use: "Named feedback channel", create: "Issue-routing instructions", when: "Before launch", why: "Questions need an owner and a response path.", doneWhen: "An owner, response expectation, and escalation route are published." }),
+      action("manager-brief", { do: `Prepare managers to explain the change, translate the impact for ${prepareAudiences.join(", ")}, and route questions`, who: managerAudience, use: `${suggested}: Manager Briefing`, create: "Manager Talking Points and Team Discussion Guide", owner: "Change Owner — confirm name", when: `After leadership alignment and before affected employees are informed; work backward from ${prepareTiming}`, why: "Managers need the change story, local impact, expected action, and a safe way to raise concerns before their teams hear the news.", doneWhen: "Managers can explain what is changing, why it matters, what their teams need to do, and where to route questions.", confirmation: "Confirm the questions managers are likely to hear and where they should escalate them." }),
+      action("feedback-path", { do: "Set a feedback and escalation path", who: "Managers and Affected Teams", use: "Named Feedback Channel", create: "Issue-Routing Instructions", owner: "Change Owner — confirm name", when: "Before launch", why: "Questions need an owner and a response path.", doneWhen: "An owner, response expectation, and escalation route are published.", confirmation: "Confirm the support contact, response expectation, and escalation route." }),
     ] : []),
   ];
   leaderActions.forEach((item) => {
     item.details = {
       audience: item.who,
-      know: `${change}\n\nWhy it matters: ${outcome}`,
+      know: `What is changing: ${prepareChange}\n\nWhy it matters: ${prepareOutcome}\n\nExpected timing: ${prepareTiming}${readinessGuidance}${riskGuidance}`,
       leaderDo: item.do,
-      messages: item.create.includes("talking points") ? `What’s new: ${change}\nWhy it matters: ${outcome}\nWhat this means for the team: ${NEEDS_INPUT}` : NEEDS_INPUT,
+      why: item.why,
+      messages: `What’s changing: ${prepareChange}\nWhy it matters: ${prepareOutcome}\nWhat leaders should do: ${item.do}.`,
       materials: item.create,
       channel: item.use,
+      doneWhen: item.doneWhen,
+      sources: prepareReferences,
       notes: item.confirmation,
     };
   });
 
-  const communicationRows: Array<Record<string, string>> = [
-    ...(!isSmall ? [{ sequence: "1", audience: "Leaders and key stakeholders", purpose: "Align before broader communication", message: `What’s changing: ${change}\nWhy it matters: ${outcome}`, sender: NEEDS_INPUT, channel: `${suggested}: leader meeting`, timing: "Before broader communication", frequency: "Once, with follow-up as needed", cta: "Confirm readiness and open decisions", material: "Leader brief", owner: NEEDS_INPUT, status, review: governed ? "Yes" : "Confirm", rationale: "A live discussion allows questions before the message expands." }] : []),
-    ...audiences.map((audience, index) => ({ sequence: String(index + (isSmall ? 1 : 2)), audience, purpose: "Explain the change and the expected action", message: `What’s new: ${change}\nWhy it matters: ${outcome}`, sender: NEEDS_INPUT, channel: `${suggested}: ${managerImpact ? "team meeting" : "email or team meeting"}`, timing, frequency: "Initial message", cta: NEEDS_INPUT, material: isSmall ? "Short announcement" : "Announcement and FAQ", owner: NEEDS_INPUT, status, review: governed ? "Yes" : "Confirm", rationale: managerImpact ? "A team discussion lets managers explain local impact." : "Use one direct channel proportionate to the change." })),
-    ...(!isSmall ? [{ sequence: String(audiences.length + 2), audience: audiences.join(", "), purpose: "Reinforce action and answer common questions", message: "Repeat the required action and address the questions people are asking.", sender: NEEDS_INPUT, channel: `${suggested}: follow-up message or office hours`, timing: "After the initial communication", frequency: "As evidence shows it is needed", cta: "Use the support path or complete the required action", material: "FAQ update or reminder", owner: NEEDS_INPUT, status, review: "Confirm", rationale: "Reinforcement should respond to real questions, not add noise." }] : []),
+  const coreMessage = `What’s changing: ${prepareChange}\nWhy it matters: ${prepareOutcome}`;
+  const communicationRows: Array<Record<string, string>> = isSmall ? [
+    { sequence: "1", audience: prepareAudiences.join(", "), purpose: "Announce the change and the action people need to take", message: `${coreMessage}\nWhat to do: Review the change and complete the required action.`, sources: prepareReferences, sender: "Change Owner — confirm name", channel: `${suggested}: Email or Team Meeting`, timing: prepareTiming, frequency: "One Time", cta: "Review the change and ask questions through the support path", material: "Announcement", owner: "Communications Owner — confirm name", status, review: governed ? "Yes" : "No", rationale: "A direct announcement is proportionate to a smaller change." },
+    { sequence: "2", audience: prepareAudiences.join(", "), purpose: "Remind people shortly before the change takes effect", message: `Reminder: ${prepareChange}\nTiming: ${prepareTiming}\nPlease complete the required action before launch.`, sources: prepareReferences, sender: "Change Owner — confirm name", channel: `${suggested}: Email or Slack`, timing: `Before launch; target window: ${prepareTiming}`, frequency: "One Time", cta: "Complete the required action before launch", material: "Reminder Message", owner: "Communications Owner — confirm name", status, review: governed ? "Yes" : "No", rationale: "A short reminder keeps the action and timing visible without adding noise." },
+  ] : [
+    { sequence: "1", audience: leadershipAudience, purpose: "Align leaders before broader communication", message: `${coreMessage}\nLeadership action: Confirm the direction, open decisions, and visible support needed.`, sources: prepareReferences, sender: "Accountable Sponsor — confirm name", channel: `${suggested}: Leader Meeting`, timing: `Before broader communication; work backward from ${prepareTiming}`, frequency: "One Time", cta: "Confirm readiness and resolve open decisions", material: "Leader Brief", owner: "Change Owner — confirm name", status, review: governed ? "Yes" : "No", rationale: "A live discussion gives leaders space to resolve questions before the message expands." },
+    { sequence: "2", audience: managerAudience, purpose: "Prepare managers to explain the change and support their teams", message: `${coreMessage}\nManager action: Use the talking points, explain the local impact, and route questions through the support path.`, sources: prepareReferences, sender: "Accountable Leader or Change Owner — confirm name", channel: `${suggested}: Manager Briefing`, timing: `After leadership alignment and before the employee announcement; work backward from ${prepareTiming}`, frequency: "One Time", cta: "Review the talking points and prepare to answer team questions", material: "Manager Talking Points", owner: "Change Owner — confirm name", status, review: governed ? "Yes" : "No", rationale: "Managers should hear the change before they are expected to explain it." },
+    { sequence: "3", audience: prepareAudiences.join(", "), purpose: "Explain the change, timing, and expected action", message: `${coreMessage}\nWhat to do: Follow the new expectation and use the support path if you need help.`, sources: prepareReferences, sender: managerImpact ? "People Manager — confirm name" : "Change Owner — confirm name", channel: `${suggested}: ${managerImpact ? "Team Meeting" : "Email or Team Meeting"}`, timing: prepareTiming, frequency: "One Time", cta: "Review what is changing and complete the required action", material: governed || isLarge ? "Announcement and FAQ" : "Announcement", owner: "Communications Owner — confirm name", status, review: governed ? "Yes" : "No", rationale: managerImpact ? "A team discussion lets managers explain the local impact." : "One direct channel keeps the message clear and proportionate." },
   ];
 
   const deliverableRows: Array<Record<string, string>> = [
-    { deliverable: isSmall ? "Short announcement" : "Leader brief", why: isSmall ? "Give affected people the essential change and action." : "Align leaders before activation.", audience: isSmall ? audiences.join(", ") : "Leaders and key stakeholders", owner: NEEDS_INPUT, due: NEEDS_INPUT, status, available: `Change: ${change}; outcome: ${outcome}`, missing: "Approved sender, channel, and final timing", draft: `What’s new: ${change}\nWhy it matters: ${outcome}\nWhat to do: ${NEEDS_INPUT}` },
-    ...(!isSmall ? [{ deliverable: "Manager talking points", why: "Help managers explain the change consistently.", audience: "People managers", owner: NEEDS_INPUT, due: NEEDS_INPUT, status, available: `Change: ${change}; outcome: ${outcome}; timing: ${timing}`, missing: "Local impact, expected action, escalation owner", draft: `1. What is changing: ${change}\n2. Why it matters: ${outcome}\n3. What this means for our team: ${NEEDS_INPUT}\n4. What happens next: ${timing}` }] : []),
-    ...(isLarge || governed ? [{ deliverable: "FAQ", why: "Provide reviewed answers for sensitive or repeated questions.", audience: audiences.join(", "), owner: NEEDS_INPUT, due: NEEDS_INPUT, status, available: `Known sensitivities: ${sensitivity}`, missing: "Confirmed questions, approved answers, reviewer", draft: "Suggested outline: what is changing; why now; impact by audience; what is not changing; support; escalation." }] : []),
-    ...(trainingNeeded ? [{ deliverable: "Job aid or training", why: "Help people perform the new task or behavior.", audience: audiences.join(", "), owner: NEEDS_INPUT, due: NEEDS_INPUT, status, available: change, missing: "Validated skill gap, delivery method, completion check", draft: "Suggested outline: task goal; steps; example; common errors; where to get help." }] : []),
+    { deliverable: isSmall ? "Announcement" : "Leader Brief", why: isSmall ? "Give affected people the essential change and action." : "Align leaders before activation.", audience: isSmall ? prepareAudiences.join(", ") : leadershipAudience, owner: "Communications Owner — confirm name", due: prepareTiming, status, available: `Change: ${prepareChange}; outcome: ${prepareOutcome}`, missing: "Confirm the sender, channel, and final timing.", draft: `What’s changing: ${prepareChange}\nWhy it matters: ${prepareOutcome}\nWhat to do: Review the change and complete the required action.` },
+    ...(!isSmall ? [{ deliverable: "Manager Talking Points", why: "Help managers explain the change consistently.", audience: managerAudience, owner: "Change Owner — confirm name", due: prepareTiming, status, available: `Change: ${prepareChange}; outcome: ${prepareOutcome}; timing: ${prepareTiming}`, missing: "Confirm the local impact and escalation contact.", draft: `1. What is changing: ${prepareChange}\n2. Why it matters: ${prepareOutcome}\n3. What this means for our team: Explain the local impact and expected behavior.\n4. What happens next: ${prepareTiming}` }] : []),
+    ...(isLarge || governed ? [{ deliverable: "FAQ", why: "Provide reviewed answers for sensitive or repeated questions.", audience: prepareAudiences.join(", "), owner: "Change Owner — confirm name", due: prepareTiming, status, available: `Known sensitivities: ${sensitivity}`, missing: "Confirm the priority questions, approved answers, and reviewer.", draft: "Suggested outline: What is changing; why now; impact by audience; what is not changing; support; escalation." }] : []),
+    ...(trainingNeeded ? [{ deliverable: "Job Aid or Training", why: "Help people perform the new task or behavior.", audience: prepareAudiences.join(", "), owner: "Training Owner — confirm name", due: prepareTiming, status, available: prepareChange, missing: "Confirm the skill gap, delivery method, and completion check.", draft: "Suggested outline: Task goal; steps; example; common errors; where to get help." }] : []),
   ];
 
-  const peopleActions = [
-    ...(trainingNeeded ? [action("prepare-training", { do: "Prepare role-relevant practice and support", who: audiences.join(", "), use: `${suggested}: guided practice or job aid`, create: "Training or job aid", when: "Before launch", why: "People need to be able to perform the new task, not only hear about it.", doneWhen: "Affected people can complete the task or pass a simple understanding check." })] : []),
-    action("readiness-check", { do: "Check readiness before broad activation", who: "Leaders, managers, and affected groups", use: "Readiness review", create: "Readiness decision and open-issue list", when: "Before launch", why: "Reach should not expand until the change is ready to support.", doneWhen: `Owners confirm materials, support, and unresolved risks. Current evidence: ${readiness}` }),
-    action("resistance-plan", { do: "Prepare for questions, friction, and resistance", who: audiences.join(", "), use: "Feedback and escalation path", create: "Issue log and response owner", when: "Before launch and during reinforcement", why: "Early signals help the team adjust before problems grow.", doneWhen: "Warning signs, response triggers, and an owner are documented.", humanReview: assessment.humanReview.length ? "Yes" : "Confirm" }),
-    ...(!isSmall ? [action("manager-coaching", { do: "Coach managers on difficult questions", who: "People managers", use: "Manager Q&A or office hours", create: "Q&A notes and escalation reminders", when: "Before and immediately after launch", why: "Managers often hear concerns first.", doneWhen: "Managers know what they can answer and what they must escalate." })] : []),
-  ];
-  peopleActions.forEach((item) => {
+  const managerPreparation = leaderActions.find((item) => item.id === "manager-brief");
+  const peopleActions = prepareAudiences.slice(0, 3).map((audience, index) => {
+    const isLeaderOrManagerAudience = /leader|manager|supervisor|sponsor|executive/i.test(audience);
+    const communication = communicationRows.find((row) => row.audience.toLowerCase().includes(audience.toLowerCase()))
+      ?? communicationRows.find((row) => isLeaderOrManagerAudience && /leader|manager/i.test(row.audience))
+      ?? communicationRows[communicationRows.length - 1];
+    const expectedAction = isLeaderOrManagerAudience
+      ? managerPreparation?.do || "Explain the change, reinforce the expected action, and route unresolved questions."
+      : trainingNeeded
+        ? "Learn and use the new process or tool, complete any required practice, and use the support path when help is needed."
+        : "Follow the new expectation, complete the required action, and use the support path when help is needed.";
+    const impact = `${audience} will need to understand ${prepareChange} and adjust how they complete or support the affected work. Confirm the specific local impact with the audience owner.`;
+    const support = isLeaderOrManagerAudience
+      ? managerPreparation?.create || "Manager Talking Points and Team Discussion Guide"
+      : trainingNeeded
+        ? `${communication.material || "Job Aid or Training"}, guided practice, and a named support path`
+        : `${communication.material || "Announcement"} and a named support path`;
+    const completion = isLeaderOrManagerAudience
+      ? managerPreparation?.doneWhen || "The audience can explain the change, expected action, timing, and escalation path."
+      : trainingNeeded
+        ? `${audience} can explain what is changing, complete the expected task or behavior, and identify where to get help.`
+        : `${audience} can explain what is changing, what they need to do, and where to get help.`;
+    const item = action(`affected-audience-${index + 1}`, {
+      do: `Prepare ${audience} to understand and act on the change`,
+      who: audience,
+      use: communication.channel || `${suggested}: Email or Team Meeting`,
+      create: support,
+      owner: "Change Owner or Audience Owner — confirm name",
+      when: communication.timing || prepareTiming,
+      why: `${prepareOutcome} ${assessment.risks.length ? `The engagement approach should also account for: ${assessment.risks.join("; ")}.` : ""}`.trim(),
+      doneWhen: completion,
+      confirmation: "Confirm the local impact, support contact, and any questions that must be resolved before launch.",
+      humanReview: governed ? "Yes" : "No — confirm before use",
+    });
     item.details = {
-      audience: item.who,
-      changing: change,
-      know: outcome,
-      audienceDo: item.do,
-      support: item.create,
-      channel: item.use,
-      feedback: item.confirmation,
+      audience,
+      changing: impact,
+      know: `What is changing: ${prepareChange}\n\nWhy it matters: ${prepareOutcome}\n\nExpected timing: ${prepareTiming}${readinessGuidance}${riskGuidance}`,
+      audienceDo: expectedAction,
+      messages: cleanMessageText(communication.message) || `${coreMessage}\nWhat to do: ${expectedAction}`,
+      channel: communication.channel || `${suggested}: Email or Team Meeting`,
+      support,
+      doneWhen: completion,
+      sources: communication.sources || prepareReferences,
+      feedback: "Use the named support or feedback path for questions, friction, and unresolved issues. Confirm the contact before launch.",
     };
+    return item;
   });
 
   const launchRows = [
@@ -186,7 +284,7 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment): PlaybookP
       { id: "stakeholders", label: "Stakeholder plan", columns: [{ key: "stakeholder", label: "Person or group", required: true, control: "person" }, { key: "role", label: "Role", required: true, control: "text" }, { key: "influence", label: "Influence", required: true, control: "select", options: ["Low", "Medium", "High"] }, { key: "currentSupport", label: "Current support", control: "select", options: ["Unknown", "Resistant", "Neutral", "Supportive", "Active"] }, { key: "desiredSupport", label: "Desired support", required: true, control: "select", options: ["Aware", "Supportive", "Active", "Decision maker"] }, { key: "need", label: "What we need", width: "large", required: true, control: "textarea" }, { key: "approach", label: "Engagement approach", width: "large", required: true, control: "textarea" }, { key: "owner", label: "Owner", required: true, control: "person" }], rows: stakeholderRows },
     ] },
     { id: "leaders", number: 3, title: "Prepare leaders and managers", purpose: "Equip the people who will explain, sponsor, and support the change.", source: "Change Navigation framework + source evidence", instructions: instruction("Give leaders the information and tools to lead consistently.", "Create one preparation entry for each leader or manager audience with different needs.", "Use the stacked Leader or manager preparation entries below; add another entry when needed.", "Audience, knowledge, required action, messages, materials, channel, owner, date, review decision, and status.", "The leader audience has an owner, date, usable messages and materials, and any required review is identified.", "People managers — explain the routing change in a team meeting using talking points and an FAQ."), actions: leaderActions },
-    { id: "communications", number: 4, title: "Build the communication sequence", purpose: "Put the right messages in the right order without over-communicating.", source: "Source evidence + Echo guardrails + Smart Brevity + Chewy writing guidance", instructions: instruction("Create a clear communication order.", "Confirm each audience, message, sender, channel, timing, and call to action.", "Edit the Ordered communication sequence below.", "Sequence, audience, message, sender, channel, timing, material, owner, review decision, and status.", "Every row has a clear order, owner, date or dependency, and completion status.", "1 — Leaders — align on the change — leader meeting — owner assigned — Complete."), actions: [], tables: [{ id: "communications", label: "Ordered communication sequence", columns: [{ key: "sequence", label: "#", width: "small", required: true, control: "text" }, { key: "audience", label: "Audience", required: true, control: "multi-select", options: audiences }, { key: "purpose", label: "Purpose", width: "large", required: true, control: "textarea" }, { key: "message", label: "Key message", width: "large", required: true, control: "textarea" }, { key: "sender", label: "Recommended sender", required: true, control: "person" }, { key: "channel", label: "Recommended channel", required: true, control: "multi-select", options: CHANNELS }, { key: "timing", label: "Target date", required: true, control: "date" }, { key: "frequency", label: "Frequency", control: "select", options: ["One time", "Weekly", "Monthly", "At milestone", "As needed"] }, { key: "cta", label: "Call to action", width: "large", required: true, control: "textarea" }, { key: "material", label: "Material to create", control: "multi-select", options: SUPPORT_MATERIALS }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "review", label: "Human review", required: true, control: "yes-no" }, { key: "rationale", label: "Why recommended", width: "large", control: "textarea" }], rows: communicationRows }] },
+    { id: "communications", number: 4, title: "Build the communication sequence", purpose: "Put the right messages in the right order without over-communicating.", source: "Source evidence + Echo guardrails + Smart Brevity + Chewy writing guidance", instructions: instruction("Create a clear communication order.", "Confirm each audience, message, sender, channel, timing, and call to action.", "Edit the Ordered communication sequence below.", "Sequence, audience, message, sender, channel, timing, material, owner, review decision, and status.", "Every row has a clear order, owner, date or dependency, and completion status.", "1 — Leaders — align on the change — leader meeting — owner assigned — Complete."), actions: [], tables: [{ id: "communications", label: "Ordered communication sequence", columns: [{ key: "sequence", label: "#", width: "small", required: true, control: "text" }, { key: "audience", label: "Audience", required: true, control: "multi-select", options: audiences }, { key: "purpose", label: "Purpose", width: "large", required: true, control: "textarea" }, { key: "message", label: "Key Message", width: "large", required: true, control: "textarea", helper: "Write only the message intended for this audience. Keep links and supporting documents in Sources / References." }, { key: "sources", label: "Sources / References", width: "large", control: "textarea", helper: "Keep supporting links, documents, and evidence here—not in the message." }, { key: "sender", label: "Recommended Sender", required: true, control: "person" }, { key: "channel", label: "Recommended Channel", required: true, control: "multi-select", options: CHANNELS }, { key: "timing", label: "Timing or Sequence", required: true, control: "text" }, { key: "frequency", label: "Frequency", control: "select", options: ["One Time", "Weekly", "Monthly", "At Milestone", "As Needed"] }, { key: "cta", label: "Call to Action", width: "large", required: true, control: "textarea" }, { key: "material", label: "Material to Create", control: "multi-select", options: SUPPORT_MATERIALS }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "review", label: "Human Review", required: true, control: "yes-no" }, { key: "rationale", label: "Why This Is Recommended", width: "large", control: "textarea" }], rows: communicationRows }] },
     { id: "materials", number: 5, title: "Prepare the materials", purpose: "Create only the items this change needs, using supported facts and clearly marked suggestions.", source, instructions: instruction("Turn the plan into usable materials.", "Confirm which deliverables are needed, assign them, and complete the missing content.", "Use the Deliverables checklist below.", "Deliverable, audience, owner, due date, status, supported content, and missing information.", "Each required deliverable has an owner, due date, status, and enough information to draft or complete it.", "Manager talking points — People managers — owner assigned — due October 5 — In progress."), actions: [], tables: [{ id: "deliverables", label: "Deliverables checklist", columns: [{ key: "deliverable", label: "Deliverable", required: true, control: "select", options: SUPPORT_MATERIALS }, { key: "why", label: "Why needed", width: "large", required: true, control: "textarea" }, { key: "audience", label: "Audience", required: true, control: "multi-select", options: audiences }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "due", label: "Due date", required: true, control: "date" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "available", label: "Source-supported content", width: "large", control: "textarea" }, { key: "missing", label: "Needs user input", width: "large", control: "textarea" }, { key: "draft", label: "Suggested language / outline", width: "large", control: "textarea" }], rows: deliverableRows }] },
     { id: "readiness", number: 6, title: "Prepare people for the change", purpose: "Make sure people can act, get help, and raise issues safely.", source: "Source evidence + Risk Signal & Readiness Gate", instructions: instruction("Prepare each audience to understand and use the change.", "Create one entry for every audience that needs different communication, training, or support.", "Use the stacked Audience preparation entries below; add another entry when needed.", "Audience, change, knowledge, action, support, channel, owner, completion date, review decision, status, and feedback path.", "Each affected audience has a complete, assigned, dated preparation entry.", "Customer Care — learn the new routing steps — job aid and guided practice — owner assigned — due October 10."), actions: peopleActions },
     { id: "launch", number: 7, title: "Launch", purpose: "Move through launch in order and keep proof that each gate is ready.", source, instructions: instruction("Execute the approved plan in order.", "Confirm each launch action, dependency, owner, date, and evidence of completion.", "Use the Chronological launch checklist below.", "Period, action, owner, target date, status, dependency, and evidence.", "Every relevant launch action has an owner, date, status, and proof requirement.", "Before launch — confirm materials and support — owner assigned — October 10 — Complete."), actions: [], tables: [{ id: "launch", label: "Chronological launch checklist", columns: [{ key: "period", label: "Period", required: true, control: "select", options: ["Before launch", "Launch day / launch period", "Immediately after launch"] }, { key: "action", label: "Action", width: "large", required: true, control: "textarea" }, { key: "owner", label: "Owner", required: true, control: "person" }, { key: "date", label: "Target date", required: true, control: "date" }, { key: "status", label: "Status", required: true, control: "status" }, { key: "dependency", label: "Dependency", width: "large", control: "textarea" }, { key: "evidence", label: "Evidence required", width: "large", required: true, control: "textarea" }], rows: launchRows }] },
@@ -194,8 +292,8 @@ function makeDetailedPlaybook(intake: Intake, assessment: Assessment): PlaybookP
   ];
 }
 
-export function makePlaybook(intake: Intake, assessment: Assessment): PlaybookPhase[] {
-  const detailed = makeDetailedPlaybook(intake, assessment);
+export function makePlaybook(intake: Intake, assessment: Assessment, generationInputs: PrepareGenerationInputs = {}): PlaybookPhase[] {
+  const detailed = makeDetailedPlaybook(intake, assessment, generationInputs);
   const byId = (id: string) => detailed.find((phase) => phase.id === id)!;
   const understand = byId("understand");
   const involved = byId("people-involved");
@@ -228,8 +326,17 @@ export function makePlaybook(intake: Intake, assessment: Assessment): PlaybookPh
   const stakeholderTable = limitTable(involved.tables![1], ["stakeholder", "role", "need"], { stakeholder: "stakeholders", owner: "owners" });
   stakeholderTable.label = "Key supporters";
   stakeholderTable.columns = stakeholderTable.columns.map((column) => column.key === "role" ? { ...column, label: "Why they matter" } : column);
-  const communicationTable = limitTable(communications.tables![0], ["audience", "purpose", "channel", "sender", "timing", "message", "owner"], { audience: "audiences", sender: "stakeholders", owner: "owners", timing: "dates" });
+  const communicationTable = limitTable(communications.tables![0], ["sequence", "audience", "purpose", "message", "sources", "channel", "sender", "timing", "cta", "owner"], { audience: "audiences", sender: "stakeholders", owner: "owners", timing: "dates" });
+  communicationTable.label = "Recommended Communication Sequence";
+  communicationTable.description = "Start with these recommendations based on the change, audience, scope, manager involvement, and timing already provided. Edit, remove, or add entries to fit the project.";
+  communicationTable.columns = communicationTable.columns.map((column) => column.key === "channel"
+    ? { ...column, options: ["Leader Meeting", "Manager Briefing", "Team Meeting", "Email", "Slack", "FAQ", "Job Aid", "Training", "Office Hours", "Intranet or Internal Page", "Other"] }
+    : column);
   const deliverableTable = limitTable(materials.tables![0], ["deliverable", "why", "audience", "owner", "due"], { audience: "audiences", owner: "owners", due: "dates" });
+  deliverableTable.description = "Review the suggested materials, then confirm the owner and timing. The draft uses information already entered and identifies what still needs confirmation.";
+  deliverableTable.columns = deliverableTable.columns.map((column) => column.key === "deliverable"
+    ? { ...column, options: ["Announcement", "Leader Brief", "Manager Talking Points", "FAQ", "Team Discussion Guide", "Job Aid or Training", "Reminder Message", "Feedback Survey", "Other"] }
+    : column);
   const launchTable = limitTable(launch.tables![0], ["action", "owner", "date", "status", "dependency", "evidence"], { owner: "owners", date: "dates" });
   launchTable.label = "Launch Timeline";
   launchTable.description = "Use this timeline to put launch activities in the order they need to happen. Add what needs to happen, who owns it, and when it should happen.";
@@ -259,7 +366,7 @@ export function makePlaybook(intake: Intake, assessment: Assessment): PlaybookPh
       actions: leaders.actions.slice(0, 3), tables: [communicationTable, deliverableTable],
       focusAreas: [
         { id: "leaders", title: "Prepare leaders and managers", description: "Review what leaders need to know, do, and share.", usage: "This helps leaders explain the change clearly and support their teams.", actionIds: leaders.actions.slice(0, 3).map((item) => item.id) },
-        { id: "communications", title: "Plan communications and channels", description: "Review the most important audiences, messages, senders, channels, and dates.", usage: "This becomes the communication sequence used before and during launch.", tableIds: [communicationTable.id] },
+        { id: "communications", title: "Plan communications and channels", description: "Review the recommended communication order, audience messages, senders, channels, and timing.", usage: "The editable sequence is ready to transfer into the appropriate communication channels.", tableIds: [communicationTable.id] },
         { id: "materials", title: "Prepare materials and support", description: "Confirm which materials are needed, who owns them, and when they are due.", usage: "These materials give leaders and employees the information and support they need.", tableIds: [deliverableTable.id] },
       ],
     },
@@ -351,6 +458,41 @@ export function phaseAttentionItems(phase: PlaybookPhase, confirmedSections: Rec
   });
 }
 
+export function changeCoachOverview(phases: PlaybookPhase[], confirmedSections: Record<string, string> = {}) {
+  const phaseProgress = phases.map((phase) => {
+    const focuses = phase.focusAreas ?? [];
+    const confirmed = focuses.filter((focus) => confirmedSections[`${phase.id}:${focus.id}`] === focusAreaSignature(phase, focus)).length;
+    const hasMissingInformation = focuses.some((focus) => focusAreaAttention(phase, focus).length > 0);
+    return {
+      id: phase.id,
+      title: phase.title,
+      icon: phase.icon,
+      color: phase.color,
+      confirmed,
+      total: focuses.length,
+      status: confirmed === focuses.length ? "Confirmed" : hasMissingInformation ? "Needs attention" : "Needs review",
+    };
+  });
+  const totalSections = phaseProgress.reduce((total, phase) => total + phase.total, 0);
+  const confirmedSectionsCount = phaseProgress.reduce((total, phase) => total + phase.confirmed, 0);
+  const readinessPercent = totalSections ? Math.round((confirmedSectionsCount / totalSections) * 100) : 0;
+  const attentionItems = phases.flatMap((phase) => phaseAttentionItems(phase, confirmedSections).map((item) => ({ ...item, phaseId: phase.id, phaseTitle: phase.title })));
+  const audienceRows = phases.flatMap((phase) => phase.tables ?? []).find((table) => table.id === "audiences")?.rows ?? [];
+  const highImpactAudiences = [...new Set(audienceRows.filter((row) => row.impact === "High").map((row) => row.audience).filter((audience) => audience && audience !== NEEDS_INPUT))];
+  const next = nextActions(phases)[0];
+  const nextPhase = next ? phases.find((phase) => phase.title === next.phase) : undefined;
+  const nextFocus = nextPhase?.focusAreas?.find((focus) => focus.actionIds?.includes(next.id)) ?? nextPhase?.focusAreas?.[0];
+  return {
+    readinessPercent,
+    confirmedSections: confirmedSectionsCount,
+    totalSections,
+    phaseProgress,
+    topAttention: attentionItems[0] ?? null,
+    highImpactAudiences,
+    nextBestAction: next ? { label: next.do, phaseId: nextPhase?.id ?? phases[0]?.id ?? "spark", focusId: nextFocus?.id ?? "why" } : null,
+  };
+}
+
 export function phaseSummary(phase: PlaybookPhase, phases: PlaybookPhase[] = [phase]) {
   const tables = phase.tables ?? [];
   const needsInput = [...phase.actions.flatMap((item) => Object.values(item).filter((itemValue) => itemValue === NEEDS_INPUT)), ...tables.flatMap((table) => table.rows.flatMap((row) => Object.values(row).filter((itemValue) => itemValue === NEEDS_INPUT)))].length;
@@ -392,7 +534,7 @@ export function serializePlaybook(projectName: string, phases: PlaybookPhase[], 
     const table = prepare?.tables?.find((item) => item.id === "communications");
     const focus = prepare?.focusAreas?.find((item) => item.id === "communications");
     const confirmed = Boolean(prepare && focus && confirmedSections[`${prepare.id}:${focus.id}`] === focusAreaSignature(prepare, focus));
-    const columns = table?.columns.filter((column) => ["audience", "purpose", "message", "channel", "sender", "timing", "owner", "cta", "material"].includes(column.key)) ?? [];
+    const columns = table?.columns.filter((column) => ["sequence", "audience", "purpose", "message", "sources", "channel", "sender", "timing", "owner", "cta", "material"].includes(column.key)) ?? [];
     return [projectName || "Change activation playbook", "COMMUNICATIONS BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", "", ...(table ? [columns.map((column) => column.label).join("\t"), ...table.rows.map((row) => columns.map((column) => row[column.key] ?? "").join("\t"))] : ["No communication actions are available."])].join("\n");
   }
   if (kind === "leaders") {
@@ -400,7 +542,7 @@ export function serializePlaybook(projectName: string, phases: PlaybookPhase[], 
     const confirmed = Boolean(prepare && focus && confirmedSections[`${prepare.id}:${focus.id}`] === focusAreaSignature(prepare, focus));
     const actions = prepare?.actions.filter((item) => focus?.actionIds?.includes(item.id)) ?? [];
     const lines = [projectName || "Change activation playbook", "LEADER PREPARATION BRIEF", confirmed ? "Review status: Confirmed" : "Review status: NEEDS REVIEW — content may include unconfirmed AI-generated recommendations", ""];
-    actions.forEach((item, index) => lines.push(`ACTION ${index + 1}: ${item.do}`, `WHO: ${item.details?.audience || item.who}`, `EXPECTATION: ${item.details?.leaderDo || item.do}`, `TALKING POINTS: ${item.details?.messages || NEEDS_INPUT}`, `PREPARATION NEEDED: ${item.details?.materials || item.create}`, `CHANNEL: ${item.details?.channel || item.use}`, `OWNER: ${item.owner}`, `DATE: ${item.when}`, `DONE WHEN: ${item.doneWhen}`, ""));
+    actions.forEach((item, index) => lines.push(`ACTION ${index + 1}: ${item.do}`, `AUDIENCE: ${item.details?.audience || item.who}`, `WHAT THEY NEED TO KNOW: ${item.details?.know || NEEDS_INPUT}`, `WHAT THEY NEED TO DO: ${item.details?.leaderDo || item.do}`, `WHY IT MATTERS: ${item.details?.why || item.why}`, `KEY MESSAGE OR TALKING POINTS: ${item.details?.messages || NEEDS_INPUT}`, `COMMUNICATION APPROACH: ${item.details?.channel || item.use}`, `PREPARATION NEEDED: ${item.details?.materials || item.create}`, `TIMING OR SEQUENCE: ${item.when}`, `DONE WHEN: ${item.doneWhen}`, `SOURCES / EVIDENCE: ${item.details?.sources || "Uploaded document"}`, `OWNER: ${item.owner}`, ""));
     if (!actions.length) lines.push("No leader preparation actions are available.");
     return lines.join("\n");
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assessChange, buildConnectorRequest, NEEDS_INPUT, parseEvidencePack, type Intake } from "../lib/changeNavigator.ts";
-import { focusAreaAttention, focusAreaSignature, makePlaybook, nextActions, phaseAttentionItems, phaseSummary, reusablePlanValues, serializePlaybook } from "../lib/playbook.ts";
+import { changeCoachOverview, collectPrepareContext, focusAreaAttention, focusAreaSignature, makePlaybook, nextActions, phaseSummary, reusablePlanValues, serializePlaybook } from "../lib/playbook.ts";
 
 const intake: Intake = {
   projectName: "Care workflow update",
@@ -45,13 +45,14 @@ test("section review names missing work and detects edits after confirmation", (
   const playbook = makePlaybook(intake, assessChange(intake));
   const prepare = playbook.find((phase) => phase.id === "prepare")!;
   const communications = prepare.focusAreas!.find((focus) => focus.id === "communications")!;
-  const missing = focusAreaAttention(prepare, communications);
-  assert.ok(missing.some((item) => item.label.includes("Recommended sender")));
-  assert.ok(missing.some((item) => item.label.includes("Owner")));
+  const table = prepare.tables!.find((item) => item.id === "communications")!;
+  assert.ok(!focusAreaAttention(prepare, communications).some((item) => item.label.includes("Owner")));
+  table.rows[0].owner = NEEDS_INPUT;
+  assert.ok(focusAreaAttention(prepare, communications).some((item) => item.label.includes("Owner")));
+  table.rows[0].owner = "Communications Owner — confirm name";
   const confirmed = { "prepare:communications": focusAreaSignature(prepare, communications) };
-  assert.ok(phaseAttentionItems(prepare, confirmed).some((item) => item.label.includes("Owner")));
   const before = confirmed["prepare:communications"];
-  prepare.tables!.find((table) => table.id === "communications")!.rows[0].owner = "Change lead";
+  table.rows[0].owner = "Change lead";
   assert.notEqual(focusAreaSignature(prepare, communications), before);
 });
 
@@ -73,8 +74,27 @@ test("full and breakout downloads reuse plan information and flag unconfirmed co
   assert.match(communications, /Customer Care/);
   assert.match(communications, /NEEDS REVIEW/);
   assert.match(leaders, /LEADER PREPARATION BRIEF/);
-  assert.match(leaders, /Align the accountable leader/);
+  assert.match(leaders, /Align on the change story/);
   assert.match(full, /Why this change: NEEDS REVIEW/);
+});
+
+test("Change Coach overview uses transparent readiness and existing plan data", () => {
+  const playbook = makePlaybook(intake, assessChange(intake));
+  const initial = changeCoachOverview(playbook);
+  assert.equal(initial.totalSections, 12);
+  assert.equal(initial.confirmedSections, 0);
+  assert.equal(initial.readinessPercent, 0);
+  assert.equal(initial.phaseProgress.length, 4);
+  assert.equal(initial.topAttention?.phaseId, "spark");
+  assert.equal(initial.nextBestAction?.label, nextActions(playbook)[0].do);
+
+  const spark = playbook.find((phase) => phase.id === "spark")!;
+  const why = spark.focusAreas!.find((focus) => focus.id === "why")!;
+  spark.tables!.find((table) => table.id === "audiences")!.rows[0].impact = "High";
+  const updated = changeCoachOverview(playbook, { "spark:why": focusAreaSignature(spark, why) });
+  assert.equal(updated.confirmedSections, 1);
+  assert.equal(updated.readinessPercent, 8);
+  assert.ok(updated.highImpactAudiences.includes("Customer Care"));
 });
 
 test("next actions update when an action is completed", () => {
@@ -101,10 +121,75 @@ test("small changes receive a proportionate plan and larger changes receive adde
 test("communication sequence is ordered, editable, and clearly labels suggestions", () => {
   const sequence = makePlaybook(intake, assessChange(intake)).find((phase) => phase.id === "prepare")?.tables?.find((table) => table.id === "communications");
   assert.ok(sequence);
-  assert.equal(sequence.columns.length, 14);
+  assert.equal(sequence.label, "Recommended Communication Sequence");
+  assert.equal(sequence.columns.length, 15);
   assert.ok(sequence.rows.every((row) => /^\d+$/.test(row.sequence)));
   assert.ok(sequence.rows.some((row) => row.channel.includes("Suggested — confirm with Communications")));
-  assert.ok(sequence.rows.every((row) => row.owner === NEEDS_INPUT));
+  assert.ok(sequence.rows.every((row) => row.owner !== NEEDS_INPUT));
+  assert.ok(sequence.rows.some((row) => /align leaders/i.test(row.purpose)));
+  assert.ok(sequence.rows.some((row) => /prepare managers/i.test(row.purpose)));
+  assert.deepEqual(sequence.columns.find((column) => column.key === "channel")?.options, ["Leader Meeting", "Manager Briefing", "Team Meeting", "Email", "Slack", "FAQ", "Job Aid", "Training", "Office Hours", "Intranet or Internal Page", "Other"]);
+});
+
+test("Prepare reuses known information and keeps sources out of audience messages", () => {
+  const linkedIntake: Intake = {
+    ...intake,
+    changeSummary: "Customer Care will use a revised routing workflow. https://example.com/change-brief",
+    externalSources: "Sources: Decision log\nhttps://example.com/decision-log",
+  };
+  const prepare = makePlaybook(linkedIntake, assessChange(linkedIntake)).find((phase) => phase.id === "prepare")!;
+  const leaders = prepare.actions.filter((item) => item.details?.leaderDo);
+  const communications = prepare.tables!.find((table) => table.id === "communications")!;
+  assert.ok(leaders.every((item) => item.owner !== NEEDS_INPUT && item.details?.messages && item.details.messages !== NEEDS_INPUT));
+  assert.ok(leaders.every((item) => !/https?:\/\//.test(item.details?.messages ?? "")));
+  assert.ok(leaders.some((item) => /example\.com/.test(item.details?.sources ?? "")));
+  assert.ok(communications.rows.every((row) => !/https?:\/\//.test(row.message)));
+  assert.ok(communications.rows.some((row) => /example\.com/.test(row.sources)));
+  assert.equal(communications.columns.find((column) => column.key === "sources")?.label, "Sources / References");
+  const brief = serializePlaybook(linkedIntake.projectName, [prepare], { kind: "communications" });
+  assert.match(brief, /Sources \/ References/);
+});
+
+test("Prepare generation receives document, connector, evidence, and prior app context", () => {
+  const contextualIntake: Intake = { ...intake, audiences: "Customer Care", timing: "" };
+  const assessment = assessChange(contextualIntake);
+  const generationInputs = {
+    sourceDocumentText: "Supervisors will explain the revised workflow to Customer Care and support guided practice.",
+    connectorRequest: "Review the Care workflow project in SharePoint and Outlook.",
+    evidencePack: "READINESS EVIDENCE: Pilot testing identified manager questions.\nSOURCES:\nhttps://example.com/pilot-notes",
+    connectorSources: ["SharePoint", "Outlook email"],
+    searchGuidance: "Use the latest pilot evidence.",
+  };
+  const context = collectPrepareContext(contextualIntake, assessment, generationInputs);
+  assert.match(context.signalText, /Supervisors will explain/);
+  assert.match(context.signalText, /latest pilot evidence/);
+  assert.deepEqual(context.connectorSources, ["SharePoint", "Outlook email"]);
+  const prepare = makePlaybook(contextualIntake, assessment, generationInputs).find((phase) => phase.id === "prepare")!;
+  const leaders = prepare.actions.filter((item) => item.details?.leaderDo);
+  assert.ok(leaders.some((item) => /manager|supervisor/i.test(item.details?.audience ?? "")));
+  assert.ok(leaders.every((item) => item.when !== NEEDS_INPUT));
+  assert.ok(leaders.every((item) => item.details?.know && item.details?.why && item.details?.messages && item.details?.doneWhen));
+  assert.ok(leaders.every((item) => !/https?:\/\//.test(item.details?.messages ?? "")));
+  assert.ok(leaders.some((item) => /example\.com\/pilot-notes/.test(item.details?.sources ?? "")));
+});
+
+test("Activate affected audiences reuse earlier context as full first drafts", () => {
+  const linkedIntake: Intake = {
+    ...intake,
+    externalEvidence: "Managers will brief Customer Care before launch.",
+    externalSources: "https://example.com/activation-evidence",
+  };
+  const playbook = makePlaybook(linkedIntake, assessChange(linkedIntake));
+  const prepare = playbook.find((phase) => phase.id === "prepare")!;
+  const activate = playbook.find((phase) => phase.id === "activate")!;
+  const prepareCommunications = prepare.tables!.find((table) => table.id === "communications")!.rows;
+  assert.equal(activate.actions.length, 2);
+  assert.deepEqual(activate.actions.map((item) => item.details?.audience), ["Customer Care", "Operations leaders"]);
+  assert.ok(activate.actions.every((item) => item.owner !== NEEDS_INPUT && item.when !== NEEDS_INPUT && item.doneWhen !== NEEDS_INPUT));
+  assert.ok(activate.actions.every((item) => item.details?.changing && item.details?.know && item.details?.audienceDo && item.details?.messages && item.details?.channel && item.details?.support && item.details?.sources));
+  assert.ok(activate.actions.every((item) => !/https?:\/\//.test(item.details?.messages ?? "")));
+  assert.ok(activate.actions.every((item) => /example\.com\/activation-evidence/.test(item.details?.sources ?? "")));
+  assert.ok(activate.actions.some((item) => prepareCommunications.some((row) => row.channel === item.details?.channel)));
 });
 
 test("download mirrors the playbook and includes open decisions", () => {
@@ -114,7 +199,7 @@ test("download mirrors the playbook and includes open decisions", () => {
   assert.match(download, /PHASE 2 — PREPARE/);
   assert.match(download, /PHASE 3 — ACTIVATE/);
   assert.match(download, /PHASE 4 — SUSTAIN/);
-  assert.match(download, /Ordered communication sequence/);
+  assert.match(download, /Recommended Communication Sequence/);
   assert.match(download, /OPEN DECISIONS \/ NEEDS USER INPUT/);
   assert.match(download, /DONE WHEN:/);
 });
